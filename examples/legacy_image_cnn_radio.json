@@ -1,0 +1,50 @@
+{
+  "data_dir": "scratch/data/PSZ2/classified",
+  "output_dir": "results/legacy_image_cnn_radio",
+  "split": {
+    "split_seed": 42,
+    "test_size": 0.2,
+    "val_size": 0.2
+  },
+  "comparison_cohort": "all",
+  "experiments": [
+    {
+      "epochs": 200,
+      "batch_size": 16,
+      "learning_rate": 5e-05,
+      "weight_decay": 0.1,
+      "use_class_weights": true,
+      "label_smoothing": 0.1,
+      "use_scheduler": true,
+      "scheduler": "onecycle",
+      "max_lr_factor": 3.0,
+      "warmup_fraction": 0.3,
+      "use_mixup": true,
+      "mixup_probability": 0.5,
+      "mixup_alpha": 0.4,
+      "gradient_clip_norm": 1.0,
+      "use_early_stopping": true,
+      "patience": 50,
+      "drop_last_train": true,
+      "name": "legacy_image_cnn_radio",
+      "mode": "raw",
+      "model": "image_cnn",
+      "seed": 42,
+      "size": 128,
+      "width": 16,
+      "augment": true,
+      "cache": true,
+      "processed_dir": "processed",
+      "verbose": true,
+      "num_workers": 0,
+      "device": "mps",
+      "monitor": "val_loss",
+      "min_delta": 0.0,
+      "class_weight": "balanced",
+      "model_params": {
+        "hidden_dim": 32,
+        "classifier_hidden_dim": 32
+      }
+    }
+  ]
+}

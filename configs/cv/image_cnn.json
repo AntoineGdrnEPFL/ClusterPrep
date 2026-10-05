@@ -1,0 +1,24 @@
+{
+  "data_dir": "scratch/data/PSZ2/classified",
+  "output_dir": "results/clusterprep/image_cnn",
+  "class_names": ["DE", "NDE"],
+  "split": {
+    "n_folds": 5,
+    "fold_index": 0,
+    "split_seed": 42,
+    "val_size": 0.2
+  },
+  "comparison_cohort": "all",
+  "experiments": [
+    {
+      "name": "image_cnn_pair",
+      "mode": "pair",
+      "model": "image_cnn",
+      "seed": 42,
+      "model_params": {
+        "hidden_dim": 32,
+        "classifier_hidden_dim": 32
+      }
+    }
+  ]
+}

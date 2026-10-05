@@ -1,0 +1,20 @@
+{
+  "data_dir": "scratch/data/PSZ2/classified",
+  "output_dir": "results/clusterprep/cnn",
+  "class_names": ["DE", "NDE"],
+  "split": {
+    "n_folds": 5,
+    "fold_index": 0,
+    "split_seed": 42,
+    "val_size": 0.2
+  },
+  "comparison_cohort": "all",
+  "experiments": [
+    {
+      "name": "cnn_pair",
+      "mode": "pair",
+      "model": "cnn",
+      "seed": 42
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "data_dir": "scratch/data/PSZ2/classified",
+  "output_dir": "results/image_cnn",
+  "split": {"split_seed": 42, "test_size": 0.2, "val_size": 0.2},
+  "comparison_cohort": "paired",
+  "experiments": [
+    {
+      "name": "image_cnn_radio",
+      "model": "image_cnn",
+      "mode": "raw",
+      "device": "mps",
+      "model_params": {"hidden_dim": 32, "classifier_hidden_dim": 32},
+      "size": 128,
+      "batch_size": 8,
+      "epochs": 50,
+      "patience": 8
+    },
+    {
+      "name": "image_cnn_multimodal",
+      "model": "image_cnn",
+      "mode": "multimodal",
+      "model_params": {"hidden_dim": 64, "classifier_hidden_dim": 32},
+      "size": 128,
+      "device": "mps",
+      "batch_size": 8,
+      "epochs": 50,
+      "patience": 8
+    }
+  ]
+}

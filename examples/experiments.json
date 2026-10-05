@@ -1,0 +1,11 @@
+{
+  "data_dir": "scratch/data/PSZ2/classified",
+  "output_dir": "results/experiments",
+  "split": {"split_seed": 42, "test_size": 0.2, "val_size": 0.2},
+  "comparison_cohort": "paired",
+  "experiments": [
+    {"name": "radio_cnn", "mode": "raw", "model": "cnn", "seed": 42, "epochs": 50, "patience": 8},
+    {"name": "pairs_cnn", "mode": "pair", "model": "cnn", "seed": 42, "epochs": 50, "patience": 8},
+    {"name": "multimodal_fusion", "mode": "multimodal", "model": "fusion", "seed": 42, "epochs": 50, "patience": 8}
+  ]
+}
