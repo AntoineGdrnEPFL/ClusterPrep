@@ -138,9 +138,14 @@ def _validate_splits(info, splits, class_names):
                 raise ValueError("Classes contradictoires pour un cluster")
 
 
-def _inputs(batch, mode, device):
-    names = ("raw",) if mode == "raw" else ("raw", "chandra", "chandra_mask")
-    return torch.cat([batch[name] for name in names], dim=1).to(device)
+def _inputs(batch, mode, model=None):
+    names = (("raw",) if mode == "raw" else ("raw", "chandra", "chandra_mask"))
+    x = torch.cat([batch[name] for name in names],dim=1)
+    if (model is not None and getattr(model,"uses_precomputed_scattering",False,)):
+        if "scattering" not in batch:
+            raise ValueError("Le modèle requiert un scattering précalculé")
+        return x, batch["scattering"]
+    return x
 
 
 def _epoch(model, loader, config, device, class_names, optimizer=None, weights=None, description=None,
@@ -157,7 +162,7 @@ def _epoch(model, loader, config, device, class_names, optimizer=None, weights=N
             target = batch["label"]
             if training:
                 optimizer.zero_grad(set_to_none=True)
-            inputs = input_adapter(batch) if input_adapter else _inputs(batch, getattr(config, "mode", "raw"), device)
+            inputs = input_adapter(batch) if input_adapter else _inputs(batch, getattr(config, "mode", "raw"), model)
             mixed = training and config.use_mixup and random.random() < config.mixup_probability
             if mixed:
                 inputs, target_a, target_b, lam = mixup_batch(inputs, target, config.mixup_alpha)
@@ -260,7 +265,7 @@ class Trainer:
             for batch in loader:
                 batch = move_batch_to_device(batch, self.device)
                 inputs = (self.input_adapter(batch) if self.input_adapter else
-                          _inputs(batch, getattr(self.config, "mode", "raw"), self.device))
+                          _inputs(batch, getattr(self.config, "mode", "raw"), self.model))
                 predictions.append(forward_model(self.model, inputs).softmax(1).cpu())
         if not predictions:
             raise ValueError("Aucun exemple dans le DataLoader")
@@ -366,9 +371,38 @@ def _run(info, config, run_dir, class_names, splits, base_splits, class_counts, 
             config.mode, config.size, config.processed_dir, config.verbose,
             warning_log=run_dir / "fits_warnings.log")
         _json(run_dir / "preprocessing.json", preparation)
+    scattering_dir = None
+    scattering_params = None
+    if getattr(model,"uses_precomputed_scattering",False):
+        if config.use_mixup:
+            raise ValueError(
+                "Le scattering précalculé n'est pas compatible "
+                "exactement avec le MixUp d'entrée. "
+                "Utiliser use_mixup=False pour DualSSN."
+            )
+        from .scattering import prepare_scattering
+        scattering_params = model.scattering_config
+        scattering_dir = (Path(config.processed_dir or "processed") / "scattering")
+        scattering_preparation = prepare_scattering(
+            info,
+            [k for keys in splits for k in keys],
+            class_names,
+            mode=config.mode,
+            size=config.size,
+            processed_dir=config.processed_dir,
+            scattering_dir=scattering_dir,
+            device=device,
+            verbose=config.verbose,
+            **scattering_params,
+        )
+        _json(
+            run_dir / "scattering.json",
+            scattering_preparation,
+        )
     datasets = [ClusterDataset(info, keys, class_names, mode=config.mode, size=config.size,
                  augment=config.augment and i == 0, cache=config.cache,
-                 processed_dir=config.processed_dir)
+                 processed_dir=config.processed_dir, scattering_dir=scattering_dir,
+                 scattering_params=scattering_params)
                 for i, keys in enumerate(splits)]
     message(f"Exemples par split : {[len(ds) for ds in datasets]}", config.verbose)
     loaders = []

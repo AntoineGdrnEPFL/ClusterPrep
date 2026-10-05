@@ -30,3 +30,14 @@ from .training_core import (TrainingConfig, LEGACY_TRAINING_CONFIG, compute_clas
 __all__ += ["Trainer", "TrainingConfig", "LEGACY_TRAINING_CONFIG", "compute_class_weights",
             "build_criterion", "build_optimizer", "build_scheduler", "mixup_batch",
             "move_batch_to_device", "forward_model"]
+
+from .scattering import (
+    prepare_scattering,
+    load_scattering,
+    scattering_paths,
+)
+__all__ += [
+    "prepare_scattering",
+    "load_scattering",
+    "scattering_paths",
+]

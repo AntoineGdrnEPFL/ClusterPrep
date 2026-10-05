@@ -1,0 +1,27 @@
+{
+  "data_dir": "scratch/data/PSZ2/classified",
+  "output_dir": "results/clusterprep/dual_encoder_ssn",
+  "class_names": ["DE", "NDE"],
+  "split": {
+    "n_folds": 5,
+    "fold_index": 0,
+    "split_seed": 42,
+    "val_size": 0.2
+  },
+  "comparison_cohort": "paired",
+  "experiments": [
+    {
+      "name": "dual_encoder_ssn_multimodal",
+      "model": "dual_encoder_ssn",
+      "mode": "multimodal",
+      "size": 128,
+      "augment": true,
+      "use_mixup": false,
+      "model_params": {
+          "J": 2,
+          "L": 8,
+          "max_order": 2
+      }
+    }
+  ]
+}

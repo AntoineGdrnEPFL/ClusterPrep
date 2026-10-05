@@ -6,13 +6,27 @@ from torchvision.transforms import InterpolationMode
 from torchvision.transforms import functional as TF
 from .preprocessing import preprocess, normalize
 from .processed import load_processed
+from .scattering import load_scattering
 
 class ClusterDataset(Dataset):
     ROTATIONS = tuple(range(0, 360, 30))
     FLIPS = (False, True)
     N_VARIANTS = len(ROTATIONS) * len(FLIPS)
 
-    def __init__(self, data_info, keys, class_names, mode="raw", size=128, augment=False, cache=False, processed_dir="processed"):
+    def __init__(
+            self,
+            data_info,
+            keys,
+            class_names,
+            mode="raw",
+            size=128,
+            augment=False,
+            cache=False,
+            processed_dir="processed",
+            scattering_dir=None,
+            scattering_params=None,
+        ):
+
         if mode not in {"raw", "pair", "multimodal"}:
             raise ValueError("mode doit être raw, pair ou multimodal")
         if not isinstance(size, int) or size < 1:
@@ -28,6 +42,13 @@ class ClusterDataset(Dataset):
         self.processed_dir = processed_dir
         self.cache = cache
         self._cache = {}
+        self.scattering_dir = scattering_dir
+        self.scattering_params = scattering_params or {
+            "J": 2,
+            "L": 8,
+            "max_order": 2,
+        }
+        self._scattering_cache = {}
         for key in self.keys:
             info = data_info[key]
             if info["class"] not in self.class_to_idx:
@@ -87,6 +108,31 @@ class ClusterDataset(Dataset):
         if self.mode != "raw":
             sample["chandra"] = torch.nan_to_num(tensor[1:2], nan=0.0)
             sample["chandra_mask"] = tensor[2:3]
+
+        if self.scattering_dir is not None:
+
+            if source_index not in self._scattering_cache:
+
+                coefficients = load_scattering(
+                    info,
+                    mode=self.mode,
+                    size=self.size,
+                    scattering_dir=self.scattering_dir,
+                    **self.scattering_params,
+                )
+
+                self._scattering_cache[source_index] = coefficients
+
+            coefficients = self._scattering_cache[source_index]
+
+            # validation/test -> variante 0
+            # train augmenté   -> variante correspondante
+            scatter_index = variant_index if self.augment else 0
+
+            # copy nécessaire car le np.memmap est read-only
+            sample["scattering"] = torch.from_numpy(
+                np.asarray(coefficients[scatter_index]).copy()
+            )
         return sample
 
     def get_item_info(self, index):

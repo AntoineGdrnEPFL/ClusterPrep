@@ -330,11 +330,30 @@ class DualSSNEncoder(nn.Module):
             block(32, 32, stride=2, dropout=0.4 if i == 3 else 0.3)
             for i in range(4)
         ])
-        # Kymatio conserve les dimensions batch/canal : [B, C, K, Hs, Ws].
+        from kymatio.torch import Scattering2D
+        temporary_scattering = Scattering2D(
+            J=J,
+            shape=(height, width),
+            L=L,
+            max_order=max_order,
+        )
         with torch.no_grad():
-            dummy = torch.zeros(1, channels, height, width)
-            scat = self.scattering(dummy).flatten(1, 2)
-        scat_blocks = [block(scat.shape[1], hidden_dim2), SEBlock(hidden_dim2)]
+            dummy = torch.zeros(
+                1,
+                channels,
+                height,
+                width,
+            )
+            scat = temporary_scattering(dummy).flatten(1, 2)
+        scat_channels = scat.shape[1]
+        del temporary_scattering
+        scat_blocks = [
+            block(
+                scat_channels,
+                hidden_dim2,
+            ),
+            SEBlock(hidden_dim2),
+        ]
         for i in range(5 - J):
             scat_blocks.extend([
                 block(hidden_dim2, hidden_dim2, dropout=0.2 + i * 0.1),
@@ -343,7 +362,6 @@ class DualSSNEncoder(nn.Module):
                 SEBlock(hidden_dim2),
             ])
         self.conv_to_latent_scat = nn.Sequential(*scat_blocks)
-
         # Aucun compteur ni statistique BatchNorm modifié à la construction.
         self.eval()
         with torch.no_grad():
@@ -352,23 +370,68 @@ class DualSSNEncoder(nn.Module):
             self.output_dim = img_features.numel() + scat_features.numel()
         self.train()
 
-    def forward(self, x):
+    def forward(self, x, scattering):
         if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
-            raise ValueError(f"DualSSN attend [B, {self.input_shape}]")
-        img = self.conv_to_latent_img(self.cnn_encoder(x)).flatten(1)
-        scat = self.scattering(x.contiguous()).flatten(1, 2)
-        scat = self.conv_to_latent_scat(scat).flatten(1)
-        return torch.cat([img, scat], dim=1)
+            raise ValueError(
+                f"DualSSN attend [B, {self.input_shape}]"
+            )
+        # branche CNN classique
+        img = self.conv_to_latent_img(
+            self.cnn_encoder(x)
+        ).flatten(1)
+        # scattering déjà calculé :
+        #
+        # [B,C,K,Hs,Ws]
+        #       ↓
+        # [B,C*K,Hs,Ws]
+        if scattering.ndim != 5:
+            raise ValueError(
+                "Scattering attendu sous forme [B,C,K,Hs,Ws]"
+            )
+        scat = scattering.flatten(1, 2)
+        scat = self.conv_to_latent_scat(
+            scat
+        ).flatten(1)
+        return torch.cat(
+            [img, scat],
+            dim=1,
+        )
 
 
 @register_model("dual_ssn")
 class DualSSN(nn.Module):
     """Un encodeur DualSSN multicanal : fusion précoce radio/Chandra/masque."""
 
-    def __init__(self, input_shape, num_classes=2, hidden_dim1=32, hidden_dim2=16,
-                 classifier_hidden_dim=32, dropout_rate=0.5, J=2, L=8, max_order=2):
+    uses_precomputed_scattering = True
+
+    def __init__(
+        self,
+        input_shape,
+        num_classes=2,
+        hidden_dim1=32,
+        hidden_dim2=16,
+        classifier_hidden_dim=32,
+        dropout_rate=0.5,
+        J=2,
+        L=8,
+        max_order=2,
+    ):
         super().__init__()
-        self.encoder = DualSSNEncoder(input_shape, hidden_dim2, J, L, max_order)
+
+        self.scattering_config = {
+            "J": J,
+            "L": L,
+            "max_order": max_order,
+        }
+
+        self.encoder = DualSSNEncoder(
+            input_shape,
+            hidden_dim2,
+            J,
+            L,
+            max_order,
+        )
+
         self.classifier = nn.Sequential(
             nn.Linear(self.encoder.output_dim, hidden_dim1), nn.BatchNorm1d(hidden_dim1),
             nn.LeakyReLU(0.2), nn.Dropout(dropout_rate),
@@ -377,8 +440,10 @@ class DualSSN(nn.Module):
             nn.Linear(classifier_hidden_dim, num_classes),
         )
 
-    def forward(self, x):
-        return self.classifier(self.encoder(x))
+    def forward(self, x, scattering):
+        return self.classifier(
+            self.encoder(x, scattering)
+        )
 
 
 @register_model("dual_encoder_ssn")
@@ -389,10 +454,17 @@ class DualEncoderSSN(nn.Module):
     (image et scattering) est annulé lorsque la couverture est nulle.
     """
 
+    uses_precomputed_scattering = True
+
     def __init__(self, input_shape, num_classes=2, fusion_hidden_dim=64,
                  hidden_dim2=16, use_mask=True, use_coverage=True,
                  dropout_rate=0.5, J=2, L=8, max_order=2):
         super().__init__()
+        self.scattering_config = {
+            "J": J,
+            "L": L,
+            "max_order": max_order,
+        }
         channels, height, width = input_shape
         if channels not in (1, 3):
             raise ValueError("DualEncoderSSN attend 1 canal (raw) ou 3 canaux (radio/Chandra/masque)")
@@ -415,18 +487,59 @@ class DualEncoderSSN(nn.Module):
             nn.Linear(fusion_hidden_dim, num_classes),
         )
 
-    def forward(self, x):
+    def forward(self, x, scattering):
+
         if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
-            raise ValueError(f"DualEncoderSSN attend [B, {self.input_shape}]")
-        features = [self.radio_encoder(x[:, :1])]
+            raise ValueError(
+                f"DualEncoderSSN attend [B, {self.input_shape}]"
+            )
+
+        # scattering :
+        # [B,C,K,Hs,Ws]
+
+        radio_scattering = scattering[:, 0:1]
+
+        features = [
+            self.radio_encoder(
+                x[:, :1],
+                radio_scattering,
+            )
+        ]
+
         if self.use_chandra:
-            coverage = x[:, 2:3].mean(dim=(2, 3))
-            chandra = x[:, 1:3] if self.use_mask else x[:, 1:2]
-            chandra_features = self.chandra_encoder(chandra)
-            features.append(chandra_features * (coverage > 0).to(chandra_features.dtype))
+
+            coverage = x[:, 2:3].mean(
+                dim=(2, 3)
+            )
+
+            if self.use_mask:
+                chandra = x[:, 1:3]
+                chandra_scattering = scattering[:, 1:3]
+
+            else:
+                chandra = x[:, 1:2]
+                chandra_scattering = scattering[:, 1:2]
+
+            chandra_features = self.chandra_encoder(
+                chandra,
+                chandra_scattering,
+            )
+
+            chandra_features = (
+                chandra_features
+                * (coverage > 0).to(
+                    chandra_features.dtype
+                )
+            )
+
+            features.append(chandra_features)
+
             if self.use_coverage:
                 features.append(coverage)
-        return self.classifier(torch.cat(features, dim=1))
+
+        return self.classifier(
+            torch.cat(features, dim=1)
+        )
 
 def _list_models_with_scattering():
     """Noms de modèles utilisant le scattering, pour avertir sur mixup."""
