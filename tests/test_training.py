@@ -169,7 +169,8 @@ class TrainingTests(unittest.TestCase):
             with self.subTest(model=name):
                 config = ExperimentConfig(name, model=name, mode="multimodal", size=8,
                     batch_size=3, drop_last_train=False, device="cpu", epochs=1,
-                    augment=False, verbose=False, processed_dir=str(self.root / "processed"),
+                    augment=False, verbose=False, use_mixup=True,
+                    processed_dir=str(self.root / "processed"),
                     model_params={"L": 2, "hidden_dim2": 2})
                 run = run_experiment(self.info, config, self.root / "runs", splits=self.splits)
                 history = json.loads((run / "history.jsonl").read_text())
@@ -177,10 +178,17 @@ class TrainingTests(unittest.TestCase):
                 result = json.loads((run / "metrics.json").read_text())
                 self.assertEqual(result["test"]["n_samples"], 4)
                 checkpoint = torch.load(run / "best.pt", weights_only=True)
+                self.assertTrue(config.use_mixup)  # La configuration appelante reste intacte.
+                self.assertFalse(checkpoint["config"]["use_mixup"])
+                saved_config = json.loads((run / "config.json").read_text())
+                self.assertFalse(saved_config["config"]["use_mixup"])
                 restored = build_model(ExperimentConfig(**checkpoint["config"]), 2)
                 restored.load_state_dict(checkpoint["model_state_dict"])
                 restored.eval()
-                self.assertTrue(torch.isfinite(restored(torch.rand(1, 3, 8, 8))).all())
+                from kymatio.torch import Scattering2D
+                x = torch.rand(1, 3, 8, 8)
+                scattering = Scattering2D(J=2, L=2, shape=(8, 8))(x)
+                self.assertTrue(torch.isfinite(restored(x, scattering)).all())
 
 
 

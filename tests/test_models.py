@@ -104,6 +104,7 @@ class ModelTests(unittest.TestCase):
 
     @unittest.skipUnless(importlib.util.find_spec("kymatio"), "kymatio optionnel absent")
     def test_dual_ssn_modes_gradients_and_checkpoint(self):
+        from kymatio.torch import Scattering2D
         for name in ("dual_ssn", "dual_encoder_ssn"):
             self.assertEqual(list_models()[name], ["multimodal", "pair", "raw"])
             for mode in ("raw", "pair", "multimodal"):
@@ -118,7 +119,8 @@ class ModelTests(unittest.TestCase):
                     if mode != "raw":
                         x[:, 2] = 1
                     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-                    output = model(x)
+                    scattering = Scattering2D(J=2, L=2, shape=(16, 16))(x)
+                    output = model(x, scattering)
                     self.assertEqual(tuple(output.shape), (2, 3))
                     nn.functional.cross_entropy(output, torch.tensor([0, 2])).backward()
                     encoders = ([model.encoder] if name == "dual_ssn" else
@@ -134,7 +136,8 @@ class ModelTests(unittest.TestCase):
                     restored.load_state_dict(model.state_dict())
                     restored.eval()
                     with torch.no_grad():
-                        torch.testing.assert_close(restored(x[:1]), model(x[:1]))
+                        torch.testing.assert_close(restored(x[:1], scattering[:1]),
+                                                   model(x[:1], scattering[:1]))
 
     @unittest.skipUnless(importlib.util.find_spec("kymatio"), "kymatio optionnel absent")
     def test_dual_ssn_scattering_scales_and_multichannel(self):
@@ -147,7 +150,7 @@ class ModelTests(unittest.TestCase):
                     scat = encoder.scattering(x)
                     for channel in range(3):
                         torch.testing.assert_close(scat[:, channel], encoder.scattering(x[:, channel].contiguous()))
-                    self.assertEqual(tuple(encoder(x).shape), (2, encoder.output_dim))
+                    self.assertEqual(tuple(encoder(x, scat).shape), (2, encoder.output_dim))
         for params in ({"J": 0}, {"J": 5}, {"L": 0}, {"max_order": 3}, {"hidden_dim2": 0}):
             with self.assertRaises(ValueError):
                 DualSSNEncoder((1, 16, 16), **params)
@@ -156,6 +159,7 @@ class ModelTests(unittest.TestCase):
 
     @unittest.skipUnless(importlib.util.find_spec("kymatio"), "kymatio optionnel absent")
     def test_dual_encoder_ssn_missing_chandra_and_options(self):
+        from kymatio.torch import Scattering2D
         from clusterprep import DualEncoderSSN
         for use_mask in (False, True):
             for use_coverage in (False, True):
@@ -163,14 +167,16 @@ class ModelTests(unittest.TestCase):
                                        use_mask=use_mask, use_coverage=use_coverage)
                 x = torch.rand(2, 3, 16, 16)
                 x[:, 2] = 0
-                model(x).sum().backward()
+                scattering = Scattering2D(J=2, L=2, shape=(16, 16))
+                scat = scattering(x)
+                model(x, scat).sum().backward()
                 for param in model.chandra_encoder.parameters():
                     self.assertEqual(param.grad.abs().sum().item(), 0)
                 model.eval()
                 changed = x.clone()
                 changed[:, 1] += 100
                 with torch.no_grad():
-                    torch.testing.assert_close(model(x), model(changed))
+                    torch.testing.assert_close(model(x, scat), model(changed, scattering(changed)))
         model = DualEncoderSSN((1, 16, 16), L=2)
         self.assertIsNone(model.chandra_encoder)
         self.assertFalse(model.use_coverage)

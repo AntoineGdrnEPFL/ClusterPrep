@@ -544,7 +544,7 @@ class DualEncoderSSN(nn.Module):
 def _list_models_with_scattering():
     """Noms de modèles utilisant le scattering, pour avertir sur mixup."""
     return [name for name, (constructor, _) in _MODELS.items()
-            if inspect.isclass(constructor) and issubclass(constructor, DualSSN)]
+            if getattr(constructor, "uses_precomputed_scattering", False)]
 
 def build_model(config, num_classes, input_shape=None):
     """Construit un modèle enregistré ou importable via 'module:Constructeur'.

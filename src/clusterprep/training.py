@@ -1,5 +1,5 @@
 """Expériences supervisées reproductibles avec sélection sur validation seule."""
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 import csv
 import hashlib
@@ -335,11 +335,10 @@ def run_experiment(data_info, config, output_dir="results/experiments", *,
     run_dir = Path(output_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     _json(run_dir / "status.json", {"status": "running"})
-    MODELS_WITH_SCATTERING = _list_models_with_scattering()
-    if config.model in MODELS_WITH_SCATTERING and config.use_mixup:
-        print("⚠️  Warnning : the model uses scattering coefficients and mixup. Deactivate mixup...")
-        config.use_mixup = False
     try:
+        if config.model in _list_models_with_scattering() and config.use_mixup:
+            print("⚠️  Modèle avec scattering : MixUp désactivé pour cette expérience.")
+            config = replace(config, use_mixup=False)
         return _run(data_info, config, run_dir, class_names, splits, base_splits,
                     class_counts, model_factory or build_model, input_adapter)
     except Exception as error:
