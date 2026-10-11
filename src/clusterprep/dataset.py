@@ -8,6 +8,8 @@ from torchvision.transforms import functional as TF
 from .preprocessing import preprocess, normalize
 from .processed import load_processed
 from .scattering import load_scattering
+from .labels import labels_for, task_target, merge_cluster_labels
+from .processed import _identity
 
 
 class ClusterDataset(Dataset):
@@ -29,6 +31,7 @@ class ClusterDataset(Dataset):
         scattering_params=None,
         task="de_nde",
         candidate_policy="positive",
+        include_targets=True,
     ):
 
         if mode not in {"raw", "pair", "multimodal"}:
@@ -37,6 +40,13 @@ class ClusterDataset(Dataset):
             raise ValueError("size doit être un entier positif")
         if len(set(class_names)) != len(class_names):
             raise ValueError("Classes dupliquées")
+        if task not in {"de_nde", "rr_rh"} or candidate_policy not in {
+            "positive",
+            "ignore",
+        }:
+            raise ValueError("task ou candidate_policy invalide")
+        self.include_targets = include_targets
+        data_info = merge_cluster_labels(data_info) if include_targets else data_info
         self.data_info = data_info
         self.keys = list(keys)
         self.class_to_idx = {name: i for i, name in enumerate(class_names)}
@@ -57,7 +67,11 @@ class ClusterDataset(Dataset):
         self.candidate_policy = candidate_policy
         for key in self.keys:
             info = data_info[key]
-            labels = set(info["labels"])
+            if not include_targets:
+                if mode == "pair" and not info.get("chandra_path"):
+                    raise ValueError(f"Fichier CHANDRA manquant : {key}")
+                continue
+            labels = labels_for(info)
             if self.task == "de_nde":
                 if not {"DE", "NDE"}.issubset(self.class_to_idx):
                     raise ValueError("La tâche de_nde nécessite les classes DE et NDE")
@@ -66,7 +80,7 @@ class ClusterDataset(Dataset):
                 if {"DE", "NDE"}.issubset(labels):
                     raise ValueError(f"Cluster ambigu DE/NDE : {key}")
             elif self.task == "rr_rh":
-                if not labels.intersection({"RR", "RH", "cRR", "cRH"}):
+                if not ("NDE" in labels or labels & {"RR", "RH", "cRR", "cRH"}):
                     raise ValueError(f"Cluster non éligible RR/RH : {key}")
             else:
                 raise ValueError(f"Tâche inconnue : {self.task}")
@@ -82,37 +96,21 @@ class ClusterDataset(Dataset):
         return divmod(index, self.N_VARIANTS) if self.augment else (index, 0)
 
     def _make_target(self, info):
-        labels = set(info["labels"])
-        if self.task == "de_nde":
-            if "DE" in labels and "NDE" in labels:
-                raise ValueError(f"Cluster ambigu DE/NDE : {info['cluster_id']}")
-            if "DE" in labels:
-                return torch.tensor(
-                    self.class_to_idx["DE"],
-                    dtype=torch.long,
-                )
-            if "NDE" in labels:
-                return torch.tensor(
-                    self.class_to_idx["NDE"],
-                    dtype=torch.long,
-                )
-            raise ValueError(f"Cluster non éligible DE/NDE : {info['cluster_id']}")
-        elif self.task == "rr_rh":
-            rr = "RR" in labels or (
-                self.candidate_policy == "positive" and "cRR" in labels
-            )
-            rh = "RH" in labels or (
-                self.candidate_policy == "positive" and "cRH" in labels
-            )
-            return torch.tensor(
-                [float(rr), float(rh)],
-                dtype=torch.float32,
-            )
-        raise ValueError(f"Tâche inconnue : {self.task}")
+        target, _ = task_target(info, self.task, self.candidate_policy, list(self.class_to_idx))
+        return torch.tensor(target, dtype=torch.long if self.task == "de_nde" else torch.float32)
 
     def __getitem__(self, index):
         source_index, variant_index = self._decode_index(index)
         info = self.data_info[self.keys[source_index]]
+        use_pair = self.mode != "raw" and bool(info.get("chandra_path"))
+        identity = _identity(info, "pair" if use_pair else "raw", self.size)
+        cache_key = repr(identity)
+        if getattr(self, "_identities", {}).get(source_index) != cache_key:
+            self._cache.pop(source_index, None)
+            self._scattering_cache.pop(source_index, None)
+        if not hasattr(self, "_identities"):
+            self._identities = {}
+        self._identities[source_index] = cache_key
         if source_index in self._cache:
             tensor = self._cache[source_index].clone()
         else:
@@ -160,11 +158,16 @@ class ClusterDataset(Dataset):
 
         sample = {
             "raw": tensor[0:1],
-            "label": self._make_target(info),
             "cluster_id": info["cluster_id"],
             "key": self.keys[source_index],
             "has_chandra": bool(info.get("chandra_path")),
         }
+        if self.include_targets:
+            sample["label"] = self._make_target(info)
+        if self.include_targets and self.task == "rr_rh":
+            sample["label_mask"] = torch.from_numpy(
+                task_target(info, self.task, self.candidate_policy)[1]
+            )
         if self.mode != "raw":
             sample["chandra"] = torch.nan_to_num(tensor[1:2], nan=0.0)
             sample["chandra_mask"] = tensor[2:3]
@@ -204,7 +207,7 @@ class ClusterDataset(Dataset):
         )
         return {
             "cluster_id": info["cluster_id"],
-            "labels": sorted(info["labels"]),
+            "labels": sorted(labels_for(info)),
             "task": self.task,
             "target": self._make_target(info).tolist(),
             "raw_path": info["raw_path"],

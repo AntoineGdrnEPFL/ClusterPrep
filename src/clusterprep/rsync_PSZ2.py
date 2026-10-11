@@ -39,6 +39,7 @@ import os
 import csv
 import argparse
 import shutil
+import tempfile
 from pathlib       import Path
 from bs4           import BeautifulSoup
 from urllib.parse  import urljoin
@@ -62,10 +63,8 @@ def check_complete_download(dest_dir, slug):
     return (len(missing) == 0), len(existing), missing
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-OUT_ROOT  = Path("/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2")
+OUT_ROOT  = Path("scratch/data/PSZ2")
 FITS_ROOT = OUT_ROOT / "fits"
-OUT_ROOT.mkdir(parents=True, exist_ok=True)
-FITS_ROOT.mkdir(parents=True, exist_ok=True)
 
 # ── LOFAR surveys index ────────────────────────────────────────────────────────
 BASE  = "https://lofar-surveys.org"
@@ -83,6 +82,10 @@ def download_and_extract(page_url, slug, force=False):
     Returns:
         Tuple ('downloaded'|'skipped'|'failed', n_fits_files)
     """
+    if not slug or Path(slug).name != slug or slug in {".", ".."}:
+        raise ValueError("Invalid cluster identifier")
+    OUT_ROOT.mkdir(parents=True, exist_ok=True)
+    FITS_ROOT.mkdir(parents=True, exist_ok=True)
     dest = FITS_ROOT / slug
 
     # Skip if already complete, unless forced
@@ -124,18 +127,36 @@ def download_and_extract(page_url, slug, force=False):
 
     out_tar.write_bytes(tr.content)
 
-    # Remove stale directory before extracting fresh copy
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True, exist_ok=True)
-
-    # Extract tarball
+    # Validate and stage the archive before replacing any existing data.
     try:
-        with tarfile.open(out_tar, "r:gz") as tf:
-            tf.extractall(dest)
+        with tempfile.TemporaryDirectory(prefix=".download-", dir=FITS_ROOT) as staging:
+            staged = Path(staging) / "data"
+            staged.mkdir()
+            with tarfile.open(out_tar, "r:*") as archive:
+                for member in archive.getmembers():
+                    target = (staged / member.name).resolve()
+                    if not target.is_relative_to(staged.resolve()) or not (member.isfile() or member.isdir()):
+                        raise ValueError("Unsafe archive member")
+                    if member.isdir():
+                        target.mkdir(parents=True, exist_ok=True)
+                    else:
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        with archive.extractfile(member) as source, target.open("wb") as output:
+                            shutil.copyfileobj(source, output)
+            if not check_complete_download(staged, slug)[0]:
+                raise ValueError("Incomplete FITS archive")
+            backup = Path(staging) / "previous"
+            if dest.exists():
+                dest.rename(backup)
+            try:
+                staged.rename(dest)
+            except Exception:
+                if backup.exists():
+                    backup.rename(dest)
+                raise
     except Exception as e:
         print(f"❌ {slug}: extraction failed: {e}")
-        out_tar.unlink()
+        out_tar.unlink(missing_ok=True)
         return ('failed', 0)
 
     # Report extracted files and clean up
@@ -147,6 +168,7 @@ def download_and_extract(page_url, slug, force=False):
 
 
 def main():
+    global OUT_ROOT, FITS_ROOT
     parser = argparse.ArgumentParser(
         description="Download PSZ2 cluster FITS files with completeness checking"
     )
@@ -162,7 +184,12 @@ def main():
         '--csv-only', action='store_true',
         help='Fetch cluster metadata from LOFAR surveys and write cluster_source_data.csv without downloading FITS files'
     )
+    parser.add_argument("--output-root", type=Path, default=OUT_ROOT)
     args = parser.parse_args()
+    OUT_ROOT = args.output_root.expanduser()
+    FITS_ROOT = OUT_ROOT / "fits"
+    OUT_ROOT.mkdir(parents=True, exist_ok=True)
+    FITS_ROOT.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
     print("PSZ2 CLUSTER FITS DOWNLOADER")

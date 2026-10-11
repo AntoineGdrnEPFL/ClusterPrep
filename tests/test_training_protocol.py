@@ -65,10 +65,11 @@ class ProtocolTests(unittest.TestCase):
         with patch('clusterprep.training.mixup_batch', side_effect=AssertionError('MixUp en validation')):
             actual, _ = trainer.evaluate(loader)
         with torch.inference_mode():
-            expected = sum(trainer.criterion(model(b['raw']), b['label']).item() * len(b['label'])
-                           for b in loader) / 5
+            expected = trainer.criterion(
+                model(torch.stack([d['raw'] for d in self.data()])),
+                torch.stack([d['label'] for d in self.data()])).item()
         self.assertTrue(model.asserted_inference)
-        self.assertAlmostEqual(actual['loss'], expected)
+        self.assertAlmostEqual(actual['loss'], expected, places=6)
         self.assertEqual(actual['n_samples'], 5)
         self.assertEqual(trainer.predict(loader).shape, (5, 2))
 

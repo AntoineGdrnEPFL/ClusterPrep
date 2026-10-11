@@ -11,15 +11,18 @@ import random
 import re
 import time
 import uuid
+import warnings
+from .labels import labels_for, task_target, merge_cluster_labels
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 from .dataset import ClusterDataset
 from .io import CLASS_NAMES
-from .metrics import classification_metrics, multilabel_metrics
+from .metrics import (classification_metrics, multilabel_metrics, resolve_thresholds,
+                      select_multilabel_thresholds)
 from .models import build_model, _list_models_with_scattering
-from .splits import split_data_keys
+from .splits import split_data_keys, split_distribution
 from .processed import prepare_processed
 from .progress import progress, message
 from .training_core import (
@@ -43,6 +46,10 @@ class ExperimentConfig(TrainingConfig):
     model: str = "cnn"
     task: str = "de_nde"
     candidate_policy: str = "positive"
+    thresholds: dict = field(default_factory=lambda: {"RR": 0.5, "RH": 0.5})
+    threshold_selection: str = "fixed"
+    threshold_min_precision: float = 0.8
+    threshold_grid: list = field(default_factory=lambda: [i / 100 for i in range(5, 100, 5)])
     seed: int = 42
     size: int = 128
     width: int = 16
@@ -59,6 +66,16 @@ class ExperimentConfig(TrainingConfig):
 
     def __post_init__(self):
         super().__post_init__()
+        resolve_thresholds(self.thresholds)
+        if self.threshold_selection not in {"fixed", "f1", "recall_at_precision"}:
+            raise ValueError("threshold_selection : fixed, f1 ou recall_at_precision")
+        if self.task == "de_nde" and self.threshold_selection != "fixed":
+            raise ValueError("La sélection de seuils est réservée à rr_rh")
+        if not np.isfinite(self.threshold_min_precision) or not 0 <= self.threshold_min_precision <= 1:
+            raise ValueError("threshold_min_precision doit être entre 0 et 1")
+        if not isinstance(self.threshold_grid, (list, tuple)) or not self.threshold_grid or any(
+                not isinstance(v, (int, float)) or not np.isfinite(v) or not 0 < v < 1 for v in self.threshold_grid):
+            raise ValueError("threshold_grid : liste non vide de nombres entre 0 et 1")
         if not isinstance(self.model_params, dict) or not all(
             isinstance(k, str) for k in self.model_params
         ):
@@ -95,8 +112,8 @@ class ExperimentConfig(TrainingConfig):
             raise ValueError("class_weight doit être none ou balanced")
         if self.task not in {"de_nde", "rr_rh"}:
             raise ValueError("task doit être de_nde ou rr_rh")
-        if self.candidate_policy not in {"positive", "all"}:
-            raise ValueError("candidate_policy doit être positive ou all")
+        if self.candidate_policy not in {"positive", "ignore"}:
+            raise ValueError("candidate_policy doit être positive ou ignore")
 
 
 class _MergeSingletonBatchSampler(BatchSampler):
@@ -137,7 +154,7 @@ def _seed_worker(worker_id):
     np.random.seed(seed)
 
 
-def _validate_splits(info, splits, class_names):
+def _validate_splits(info, splits, class_names, task="de_nde", candidate_policy="positive"):
     if len(class_names) < 2 or len(set(class_names)) != len(class_names):
         raise ValueError("Au moins deux classes distinctes requises")
     if len(splits) != 3:
@@ -148,8 +165,9 @@ def _validate_splits(info, splits, class_names):
             raise ValueError("Splits non vides et sans clés dupliquées requis")
         clusters = set()
         for key in keys:
-            if info[key]["class"] not in class_names:
-                raise ValueError(f"Classe inconnue : {key}")
+            task_target(info[key], task, candidate_policy, class_names)
+            if info[key]["cluster_id"] in clusters:
+                raise ValueError("Cluster dupliqué dans un split : dédupliquer les observations")
             clusters.add(info[key]["cluster_id"])
         if seen & clusters:
             raise ValueError("Fuite de clusters entre les splits")
@@ -158,8 +176,8 @@ def _validate_splits(info, splits, class_names):
     for keys in splits:
         for key in keys:
             item = info[key]
-            previous = labels.setdefault(item["cluster_id"], item["class"])
-            if previous != item["class"]:
+            previous = labels.setdefault(item["cluster_id"], labels_for(item))
+            if previous != labels_for(item):
                 raise ValueError("Classes contradictoires pour un cluster")
 
 
@@ -183,22 +201,10 @@ def compute_task_counts(
     task,
     candidate_policy="positive",
 ):
+    targets = [task_target(data_info[k], task, candidate_policy)[0] for k in train_keys]
     if task == "de_nde":
-        return [
-            sum("DE" in data_info[k]["labels"] for k in train_keys),
-            sum("NDE" in data_info[k]["labels"] for k in train_keys),
-        ]
-    if task == "rr_rh":
-        rr_labels = {"RR"}
-        rh_labels = {"RH"}
-        if candidate_policy == "positive":
-            rr_labels.add("cRR")
-            rh_labels.add("cRH")
-        return [
-            sum(bool(set(data_info[k]["labels"]) & rr_labels) for k in train_keys),
-            sum(bool(set(data_info[k]["labels"]) & rh_labels) for k in train_keys),
-        ]
-    raise ValueError(f"Tâche inconnue : {task}")
+        return [sum(t == i for t in targets) for i in range(2)]
+    return np.asarray(targets).sum(axis=0).tolist()
 
 
 def _epoch(
@@ -216,11 +222,13 @@ def _epoch(
 ):
     training = optimizer is not None
     model.train(training)
-    labels, probabilities, predictions = [], [], []
+    labels, probabilities, predictions, masks = [], [], [], []
+    loss_denominator = 0.0
+    task = getattr(config, "task", "de_nde")
     total_loss, count = 0.0, 0
-    criterion = criterion or nn.CrossEntropyLoss(
+    criterion = criterion or (nn.BCEWithLogitsLoss() if task == "rr_rh" else nn.CrossEntropyLoss(
         weight=weights, label_smoothing=config.label_smoothing
-    )
+    ))
     with (
         torch.enable_grad() if training else torch.inference_mode(),
         progress(
@@ -232,6 +240,11 @@ def _epoch(
         for batch in bar:
             batch = move_batch_to_device(batch, device)
             target = batch["label"]
+            if task == "rr_rh":
+                observed = batch.get("label_mask", torch.ones_like(target))
+                if observed.shape != target.shape or not ((observed == 0) | (observed == 1)).all():
+                    raise ValueError("Masque de labels binaire [B, 2] requis")
+                target = torch.where(observed.bool(), target, torch.zeros_like(target))
             if training:
                 optimizer.zero_grad(set_to_none=True)
             inputs = (
@@ -244,10 +257,16 @@ def _epoch(
                 and config.use_mixup
                 and random.random() < config.mixup_probability
             )
+            if mixed and getattr(model, "uses_precomputed_scattering", False):
+                raise ValueError("MixUp incompatible avec scattering précalculé")
             if mixed:
-                inputs, target_a, target_b, lam = mixup_batch(
-                    inputs, target, config.mixup_alpha
-                )
+                if task == "rr_rh":
+                    packed = torch.stack((target, batch.get("label_mask", torch.ones_like(target))), dim=1)
+                    inputs, packed_a, packed_b, lam = mixup_batch(inputs, packed, config.mixup_alpha)
+                    target_a, mask_a = packed_a.unbind(1)
+                    target_b, mask_b = packed_b.unbind(1)
+                else:
+                    inputs, target_a, target_b, lam = mixup_batch(inputs, target, config.mixup_alpha)
             logits = forward_model(model, inputs)
             if (
                 logits.shape != (len(target), len(class_names))
@@ -256,7 +275,7 @@ def _epoch(
                 raise ValueError(
                     "Le modèle doit retourner des logits finis [B, nombre_classes]"
                 )
-            if config.task == "rr_rh":
+            if getattr(config, "task", "de_nde") == "rr_rh":
                 if target.shape != logits.shape:
                     raise ValueError(
                         f"Target multi-label invalide : "
@@ -264,8 +283,10 @@ def _epoch(
                     )
                 if target.dtype != torch.float32:
                     raise TypeError("Les cibles RR/RH doivent être float32")
+                if not torch.isfinite(target).all() or not ((target == 0) | (target == 1)).all():
+                    raise ValueError("Targets binaires finis requis")
             # CE simple conservée séparément pour les comparaisons de cohortes.
-            if config.task == "de_nde":
+            if getattr(config, "task", "de_nde") == "de_nde":
                 losses = nn.functional.cross_entropy(
                     logits,
                     target,
@@ -277,23 +298,30 @@ def _epoch(
                     )
                 else:
                     loss = criterion(logits, target)
-            elif config.task == "rr_rh":
-                losses = nn.functional.binary_cross_entropy_with_logits(
-                    logits,
-                    target,
-                    reduction="none",
-                ).mean(dim=1)
+            elif getattr(config, "task", "de_nde") == "rr_rh":
+                mask = batch.get("label_mask", torch.ones_like(target))
+                if mask.shape != target.shape or not ((mask == 0) | (mask == 1)).all():
+                    raise ValueError("Masque de labels binaire [B, 2] requis")
+                elements = nn.functional.binary_cross_entropy_with_logits(logits, target, reduction="none")
+                losses = (elements * mask).sum(1) / mask.sum(1).clamp_min(1)
+                def masked_loss(y, m):
+                    values = nn.functional.binary_cross_entropy_with_logits(
+                        logits, y, pos_weight=criterion.pos_weight, reduction="none")
+                    return (values * m).sum(), m.sum()
                 if mixed:
-                    loss = lam * criterion(logits, target_a) + (1 - lam) * criterion(
-                        logits, target_b
-                    )
+                    numerator_a, denominator_a = masked_loss(target_a, mask_a)
+                    numerator_b, denominator_b = masked_loss(target_b, mask_b)
+                    denominator = lam * denominator_a + (1-lam) * denominator_b
+                    loss = (lam * numerator_a + (1-lam) * numerator_b) / denominator.clamp_min(1)
                 else:
-                    loss = criterion(logits, target)
+                    numerator, denominator = masked_loss(target, mask)
+                    loss = numerator / denominator.clamp_min(1)
+                masks.extend(mask.cpu().tolist())
             else:
                 raise ValueError(f"Tâche inconnue : {config.task}")
             if not torch.isfinite(loss):
                 raise ValueError("Perte non finie")
-            if training:
+            if training and (task != "rr_rh" or float(denominator) > 0):
                 loss.backward()
                 if config.gradient_clip_norm > 0:
                     nn.utils.clip_grad_norm_(
@@ -302,27 +330,34 @@ def _epoch(
                 optimizer.step()
                 if scheduler is not None:
                     scheduler.step()
-            if config.task == "de_nde":
+            if getattr(config, "task", "de_nde") == "de_nde":
                 proba = logits.detach().softmax(dim=1).cpu().numpy()
-            elif config.task == "rr_rh":
+            elif getattr(config, "task", "de_nde") == "rr_rh":
                 proba = logits.detach().sigmoid().cpu().numpy()
             else:
                 raise ValueError(f"Tâche inconnue : {config.task}")
             truth = target.cpu().numpy()
-            total_loss += loss.item() * len(target)
+            if task == "rr_rh":
+                batch_denominator = float(denominator)
+            elif isinstance(criterion, nn.CrossEntropyLoss) and criterion.weight is not None:
+                batch_denominator = float(criterion.weight[target].sum())
+            else:
+                batch_denominator = len(target)
+            total_loss += loss.item() * batch_denominator
+            loss_denominator += batch_denominator
             count += len(target)
-            bar.set_postfix(loss=f"{total_loss / count:.4f}", refresh=False)
+            bar.set_postfix(loss=f"{total_loss / max(loss_denominator, 1):.4f}", refresh=False)
             labels.extend(truth.tolist())
             probabilities.extend(proba.tolist())
             if not training:
                 sample_losses = losses.detach().cpu().tolist()
                 for i in range(len(target)):
-                    if config.task == "de_nde":
+                    if getattr(config, "task", "de_nde") == "de_nde":
                         true_label = int(truth[i])
                         predicted_label = int(proba[i].argmax())
-                    elif config.task == "rr_rh":
+                    elif getattr(config, "task", "de_nde") == "rr_rh":
                         true_label = truth[i].astype(int).tolist()
-                        predicted_label = (proba[i] >= 0.5).astype(int).tolist()
+                        predicted_label = (proba[i] >= np.array(list(resolve_thresholds(config.thresholds, class_names).values()))).astype(int).tolist()
                     else:
                         raise ValueError(f"Tâche inconnue : {config.task}")
                     predictions.append(
@@ -334,6 +369,7 @@ def _epoch(
                                 i
                             ],
                             "label": true_label,
+                            "label_mask": mask[i].cpu().tolist() if task == "rr_rh" else None,
                             "prediction": predicted_label,
                             "has_chandra": bool(
                                 batch.get("has_chandra", [False] * len(target))[i]
@@ -342,24 +378,27 @@ def _epoch(
                             "probabilities": proba[i].tolist(),
                         }
                     )
+    if loss_denominator == 0 and count:
+        raise ValueError("Aucun label connu dans ce split")
     if count == 0:
         raise ValueError("Aucun exemple dans le DataLoader")
-    if config.task == "de_nde":
+    if getattr(config, "task", "de_nde") == "de_nde":
         metrics = classification_metrics(
             labels,
             probabilities,
             class_names,
         )
-    elif config.task == "rr_rh":
+    elif getattr(config, "task", "de_nde") == "rr_rh":
         metrics = multilabel_metrics(
             labels,
             probabilities,
             label_names=class_names,
-            threshold=0.5,
+            thresholds=getattr(config, "thresholds", None),
+            mask=masks,
         )
     else:
         raise ValueError(f"Tâche inconnue : {config.task}")
-    metrics["loss"] = total_loss / count
+    metrics["loss"] = total_loss / max(loss_denominator, 1)
     return metrics, predictions
 
 
@@ -457,9 +496,9 @@ class Trainer:
                     else _inputs(batch, getattr(self.config, "mode", "raw"), self.model)
                 )
                 logits = forward_model(self.model, inputs)
-                if self.config.task == "de_nde":
+                if getattr(self.config, "task", "de_nde") == "de_nde":
                     probabilities = logits.softmax(dim=1)
-                elif self.config.task == "rr_rh":
+                elif getattr(self.config, "task", "de_nde") == "rr_rh":
                     probabilities = logits.sigmoid()
                 else:
                     raise ValueError(f"Tâche inconnue : {self.config.task}")
@@ -474,6 +513,8 @@ def _cohort(
     class_names,
     sources,
     task="de_nde",
+    thresholds=None,
+    candidate_policy=None,
 ):
     if not predictions:
         return {
@@ -497,18 +538,26 @@ def _cohort(
             targets,
             probabilities,
             label_names=class_names,
+            mask=[p.get("label_mask", [1, 1]) for p in ordered],
+            thresholds=thresholds,
         )
     else:
         raise ValueError(f"Tâche inconnue : {task}")
-    metrics["loss"] = float(np.mean([p["loss"] for p in ordered]))
+    if task == "rr_rh":
+        known = [sum(p.get("label_mask", [1, 1])) for p in ordered]
+        metrics["loss"] = float(np.average([p["loss"] for p in ordered], weights=known)) if sum(known) else None
+    else:
+        metrics["loss"] = float(np.mean([p["loss"] for p in ordered]))
     identity = {
         "task": task,
         "classes": list(class_names),
+        **({"candidate_policy": candidate_policy} if task == "rr_rh" else {}),
         "samples": [
             (
                 p["key"],
                 p["cluster_id"],
                 p["label"],
+                p.get("label_mask"),
                 sources[p["key"]],
             )
             for p in ordered
@@ -530,6 +579,7 @@ def _source_signature(item):
                 "path": str(path),
                 "bytes": stat.st_size,
                 "mtime_ns": stat.st_mtime_ns,
+                "ctime_ns": stat.st_ctime_ns,
             }
         else:
             signature[name] = None
@@ -554,7 +604,7 @@ def _write_predictions(
     elif task == "rr_rh":
         label_fields = [f"label_{name}" for name in class_names]
         prediction_fields = [f"prediction_{name}" for name in class_names]
-        fields = base_fields + label_fields + prediction_fields + probability_fields
+        fields = base_fields + label_fields + prediction_fields + probability_fields + [f"known_{name}" for name in class_names]
     else:
         raise ValueError(f"Tâche inconnue : {task}")
     with Path(path).open("w", newline="") as stream:
@@ -571,10 +621,24 @@ def _write_predictions(
             elif task == "rr_rh":
                 for i, name in enumerate(class_names):
                     row[f"label_{name}"] = prediction["label"][i]
+                    row[f"known_{name}"] = prediction.get("label_mask", [1, 1])[i]
                     row[f"prediction_{name}"] = prediction["prediction"][i]
             for i, name in enumerate(class_names):
                 row[f"probability_{name}"] = prediction["probabilities"][i]
             writer.writerow(row)
+
+
+def _unique_cluster_splits(info, splits):
+    """Choose one observation per cluster in automatically generated splits."""
+    result = []
+    for keys in splits:
+        chosen = {}
+        for key in keys:
+            cid = info[key]["cluster_id"]
+            if cid not in chosen or (info[key].get("chandra_path") and not info[chosen[cid]].get("chandra_path")):
+                chosen[cid] = key
+        result.append(list(chosen.values()))
+    return tuple(result)
 
 
 def run_experiment(
@@ -586,6 +650,7 @@ def run_experiment(
     splits=None,
     model_factory=None,
     input_adapter=None,
+    split_metadata=None,
 ):
     """Entraîne un modèle neuf, restaure son meilleur état, puis évalue le test une fois.
 
@@ -594,30 +659,36 @@ def run_experiment(
     input_adapter(batch) peut remplacer cette entrée par un tenseur, tuple ou dict.
     Chaque appel crée un répertoire unique et ne remplace aucune expérience.
     """
-    class_names = tuple(class_names)
+    data_info = merge_cluster_labels(data_info)
+    class_names = ("RR", "RH") if config.task == "rr_rh" else tuple(class_names)
+    if config.task == "de_nde" and set(class_names) != {"DE", "NDE"}:
+        class_names = CLASS_NAMES
     if splits is None:
-        splits = split_data_keys(data_info, mode="raw", task=config.task, seed=42)
+        splits = split_data_keys(data_info, mode=(config.mode if config.task == "rr_rh" else "raw"), task=config.task, candidate_policy=config.candidate_policy, seed=config.seed)
+        splits = _unique_cluster_splits(data_info, splits)
     splits = tuple(list(keys) for keys in splits)
-    _validate_splits(data_info, splits, class_names)
+    _validate_splits(data_info, splits, class_names, config.task, config.candidate_policy)
     base_splits = splits
     if config.mode == "pair":
         splits = tuple(
             [k for k in keys if data_info[k].get("chandra_path")] for keys in splits
         )
-    _validate_splits(data_info, splits, class_names)
+    _validate_splits(data_info, splits, class_names, config.task, config.candidate_policy)
     class_counts = compute_task_counts(
         data_info,
         splits[0],
         config.task,
         config.candidate_policy,
     )
+    if config.task == "de_nde" and tuple(class_names) == ("NDE", "DE"):
+        class_counts.reverse()
     if min(class_counts) == 0:
         raise ValueError(
             "Chaque classe doit être présente dans l'entraînement après filtrage"
         )
-    if config.task == "rr_rh":
-        n_train = len(splits[0])
-        if any(count >= n_train for count in class_counts):
+    if getattr(config, "task", "de_nde") == "rr_rh":
+        n_train = np.asarray([task_target(data_info[k], config.task, config.candidate_policy)[1] for k in splits[0]]).sum(0)
+        if any(count >= total for count, total in zip(class_counts, n_train)):
             raise ValueError(
                 "Chaque label doit également avoir " "au moins un exemple négatif"
             )
@@ -639,6 +710,7 @@ def run_experiment(
             class_counts,
             model_factory or build_model,
             input_adapter,
+            split_metadata,
         )
     except Exception as error:
         _json(run_dir / "status.json", {"status": "failed", "error": str(error)})
@@ -655,6 +727,7 @@ def _run(
     class_counts,
     factory,
     input_adapter=None,
+    split_metadata=None,
 ):
     started = time.perf_counter()
     random.seed(config.seed)
@@ -662,9 +735,7 @@ def _run(
     torch.manual_seed(config.seed)
     device = torch.device(config.device)
 
-    from .models import output_names_for_task
-
-    output_names = output_names_for_task(config.task)
+    output_names = tuple(class_names)
     model = factory(
         config,
         len(output_names),
@@ -782,7 +853,8 @@ def _run(
         device=device,
         steps_per_epoch=len(loaders[0]),
         input_adapter=input_adapter,
-        n_train=len(splits[0]),
+        n_train=(np.asarray([task_target(info[k], config.task, config.candidate_policy)[1] for k in splits[0]]).sum(0)
+                 if config.task == "rr_rh" else len(splits[0])),
     )
     optimizer = trainer.optimizer
     metadata = {
@@ -792,6 +864,7 @@ def _run(
         "train_class_counts": dict(zip(class_names, class_counts)),
         "model_class": f"{type(model).__module__}.{type(model).__qualname__}",
         "model_repr": repr(model),
+        "scattering_config": getattr(model, "scattering_config", None),
         "library_source_sha256": _fingerprint(
             {p.name: p.read_text() for p in sorted(Path(__file__).parent.glob("*.py"))}
         ),
@@ -814,12 +887,15 @@ def _run(
     split_manifest = {
         name: keys for name, keys in zip(("train", "validation", "test"), splits)
     }
+    if split_metadata is not None:
+        split_manifest["split_config"] = split_metadata
     split_manifest["base_splits"] = dict(
         zip(("train", "validation", "test"), base_splits)
     )
     split_manifest["samples"] = {
         k: {
             **info[k],
+            "labels": sorted(labels_for(info[k])),
             "raw_path": str(Path(info[k]["raw_path"]).resolve()),
             "chandra_path": (
                 str(Path(info[k]["chandra_path"]).resolve())
@@ -833,6 +909,7 @@ def _run(
     sources = {k: _source_signature(info[k]) for keys in base_splits for k in keys}
     split_manifest["source_signatures"] = sources
     _json(run_dir / "splits.json", split_manifest)
+    _json(run_dir / "split_distribution.json", split_distribution(info, splits, config.task, config.candidate_policy))
     stopping = trainer.stopping
     history, best_epoch, stopped = [], 0, False
     history_path = run_dir / "history.csv"
@@ -867,14 +944,18 @@ def _run(
                     if not isinstance(value, (dict, list))
                 }
             )
+            for label, scores in metrics.get("per_label", {}).items():
+                flat.update({f"{prefix}_{label}_{key}": value for key, value in scores.items()
+                             if not isinstance(value, (dict, list))})
         with history_path.open("a", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=list(flat))
             if epoch == 1:
                 writer.writeheader()
             writer.writerow(flat)
-        improved, stopped = stopping.step(
-            val_metrics[config.monitor.removeprefix("val_")], model
-        )
+        score = val_metrics[config.monitor.removeprefix("val_")]
+        if score is None:
+            raise ValueError(f"Métrique {config.monitor} non définie dans la validation ; utiliser val_loss")
+        improved, stopped = stopping.step(score, model)
         stopped = stopped and config.use_early_stopping
         if improved:
             best_epoch = epoch
@@ -911,6 +992,32 @@ def _run(
     val_metrics, val_predictions = trainer.evaluate(
         loaders[1], description="Validation finale"
     )
+    threshold_selection = None
+    if config.task == "rr_rh":
+        threshold_selection = select_multilabel_thresholds(
+            [p["label"] for p in val_predictions],
+            [p["probabilities"] for p in val_predictions],
+            target_mask=[p["label_mask"] for p in val_predictions],
+            method=config.threshold_selection, grid=config.threshold_grid,
+            min_precision=config.threshold_min_precision, fallback=config.thresholds,
+        )
+        chosen = threshold_selection["thresholds"]
+        config = replace(config, thresholds=chosen)
+        trainer.config = config
+        validation_loss = val_metrics["loss"]
+        val_metrics = multilabel_metrics(
+            [p["label"] for p in val_predictions], [p["probabilities"] for p in val_predictions],
+            target_mask=[p["label_mask"] for p in val_predictions], thresholds=chosen)
+        val_metrics["loss"] = validation_loss
+        for prediction in val_predictions:
+            prediction["prediction"] = (np.asarray(prediction["probabilities"]) >=
+                                         np.array(list(chosen.values()))).astype(int).tolist()
+        _json(run_dir / "thresholds.json", threshold_selection)
+        metadata["evaluation"] = threshold_selection
+        _json(run_dir / "config.json", metadata)
+        checkpoint = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
+        checkpoint["evaluation"] = threshold_selection
+        torch.save(checkpoint, run_dir / "best.pt")
     test_metrics, test_predictions = trainer.evaluate(
         loaders[2], description="Test final"
     )
@@ -940,24 +1047,32 @@ def _run(
         "split_counts": dict(zip(("train", "validation", "test"), map(len, splits))),
         "validation": val_metrics,
         "test": test_metrics,
+        **({"threshold_selection": threshold_selection,
+            "annotation_convention": "unannotated_negative"} if config.task == "rr_rh" else {}),
         "test_cohorts": {
             "all": _cohort(
                 test_predictions,
                 output_names,
                 sources,
                 task=config.task,
+                thresholds=config.thresholds,
+                candidate_policy=config.candidate_policy,
             ),
             "paired": _cohort(
                 [p for p in test_predictions if p["has_chandra"]],
                 output_names,
                 sources,
                 task=config.task,
+                thresholds=config.thresholds,
+                candidate_policy=config.candidate_policy,
             ),
             "raw_only": _cohort(
                 [p for p in test_predictions if not p["has_chandra"]],
                 output_names,
                 sources,
                 task=config.task,
+                thresholds=config.thresholds,
+                candidate_policy=config.candidate_policy,
             ),
         },
     }
@@ -965,7 +1080,7 @@ def _run(
     _json(run_dir / "status.json", {"status": "completed"})
     message(
         f"Terminé : test loss={test_metrics['loss']:.4f}, "
-        f"F1 macro={test_metrics['macro_f1']:.3f}, accuracy={test_metrics['accuracy']:.3f} "
+        f"F1 macro={test_metrics['macro_f1']:.3f}, accuracy={test_metrics['accuracy']} "
         f"| {results['seconds']:.1f} s\nFichiers : {run_dir}",
         config.verbose,
     )
@@ -991,19 +1106,26 @@ def run_experiments(
     configs = list(configs)
     if not configs:
         raise ValueError("Au moins une configuration d'expérience requise")
-    if splits is None:
-        splits = split_data_keys(
-            data_info,
-            mode="raw",
-            seed=split_seed,
-            task=config.task,
-            test_size=test_size,
-            val_size=val_size,
-            n_folds=n_folds,
-            fold_index=fold_index,
-        )
+    supplied_splits = splits
+    split_cache = {}
     runs = []
     for index, config in enumerate(configs, 1):
+        split_mode = "pair" if config.task == "rr_rh" and config.mode == "pair" else "raw"
+        split_key = (config.task, config.candidate_policy, split_mode)
+        if supplied_splits is None and split_key not in split_cache:
+            split_cache[split_key] = split_data_keys(
+                data_info,
+                mode=split_mode,
+                seed=split_seed,
+                task=config.task,
+                candidate_policy=config.candidate_policy,
+                test_size=test_size,
+                val_size=val_size,
+                n_folds=n_folds,
+                fold_index=fold_index,
+            )
+            split_cache[split_key] = _unique_cluster_splits(data_info, split_cache[split_key])
+        splits = supplied_splits if supplied_splits is not None else split_cache[split_key]
         message(f"\nExpérience {index}/{len(configs)}", config.verbose)
         runs.append(
             run_experiment(
@@ -1014,6 +1136,8 @@ def run_experiments(
                 splits=splits,
                 model_factory=model_factory,
                 input_adapter=input_adapter,
+                split_metadata=({"split_seed": split_seed, "n_folds": n_folds, "fold_index": fold_index,
+                                 "val_size": val_size, "test_size": test_size} if supplied_splits is None else None),
             )
         )
     return runs
@@ -1024,9 +1148,17 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
     if cohort not in {"all", "paired", "raw_only"}:
         raise ValueError("Cohorte attendue : all, paired ou raw_only")
     rows, cohort_id = [], None
+    run_dirs = list(run_dirs)
+    tasks = [json.loads((Path(d) / "metrics.json").read_text()).get("config", {}).get("task", "de_nde") for d in run_dirs]
+    canonical_cohort_id = None
+    if tasks and all(task == "rr_rh" for task in tasks):
+        from .multilabel_analysis import load_run, assert_comparable
+        canonical_cohort_id = assert_comparable([load_run(d) for d in run_dirs], cohort=cohort)
     for directory in run_dirs:
         result = json.loads((Path(directory) / "metrics.json").read_text())
         selected = result["test_cohorts"][cohort]
+        if canonical_cohort_id is not None:
+            selected = {**selected, "cohort_id": canonical_cohort_id}
         if selected["cohort_id"] is None:
             raise ValueError(f"Cohorte vide pour {directory}")
         if cohort_id is not None and cohort_id != selected["cohort_id"]:
@@ -1052,12 +1184,17 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
                 if not isinstance(v, (dict, list))
             }
         )
-        if result["config"]["task"] == "rr_rh":
+        if result["config"].get("task", "de_nde") == "rr_rh":
             per_label = selected["metrics"]["per_label"]
             for label_name, label_metrics in per_label.items():
                 for metric_name, value in label_metrics.items():
                     if not isinstance(value, (dict, list)):
                         row[f"{label_name}_{metric_name}"] = value
+        if result["config"].get("task", "de_nde") == "rr_rh":
+            row["candidate_policy"] = result["config"].get("candidate_policy", "unknown")
+            row["threshold_selection"] = result.get("threshold_selection", {}).get("method", "fixed")
+            for name, cutoff in resolve_thresholds(result["config"].get("thresholds")).items():
+                row[f"threshold_{name}"] = cutoff
         rows.append(row)
     if not rows:
         raise ValueError("Au moins une expérience requise")
@@ -1065,7 +1202,7 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+            writer = csv.DictWriter(stream, fieldnames=list(dict.fromkeys(key for row in rows for key in row)))
             writer.writeheader()
             writer.writerows(rows)
     return rows

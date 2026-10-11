@@ -1,6 +1,8 @@
 """Précalcul et cache des coefficients de scattering."""
 
 import json
+import hashlib
+from .processed import CACHE_VERSION
 import os
 import tempfile
 from pathlib import Path
@@ -11,14 +13,14 @@ import torch
 
 from .progress import progress, message
 
-SCATTERING_CACHE_VERSION = 1
+SCATTERING_CACHE_VERSION = 2
 
 
-def _source_signature(info):
+def _source_signature(info, mode):
     """Identité des fichiers sources pour invalider le cache si nécessaire."""
     result = {}
 
-    for name in ("raw_path", "chandra_path"):
+    for name in (("raw_path",) if mode == "raw" else ("raw_path", "chandra_path")):
         path = info.get(name)
 
         if path is None:
@@ -32,6 +34,7 @@ def _source_signature(info):
             "path": str(path),
             "size": stat.st_size,
             "mtime_ns": stat.st_mtime_ns,
+            "ctime_ns": stat.st_ctime_ns,
         }
 
     return result
@@ -47,6 +50,7 @@ def scattering_identity(
 ):
     return {
         "version": SCATTERING_CACHE_VERSION,
+        "preprocessing_version": CACHE_VERSION,
         "cluster_id": info["cluster_id"],
         "mode": mode,
         "size": size,
@@ -64,7 +68,7 @@ def scattering_identity(
             "rotations": list(range(0, 360, 30)),
             "horizontal_flip": [False, True],
         },
-        "sources": _source_signature(info),
+        "sources": _source_signature(info, mode),
     }
 
 
@@ -78,6 +82,8 @@ def scattering_paths(
     scattering_dir,
 ):
     cluster = quote(str(info["cluster_id"]), safe="+")
+    if cluster in {"", ".", ".."}:
+        raise ValueError("cluster_id invalide")
     root = Path(scattering_dir) / cluster
 
     stem = (
@@ -142,7 +148,14 @@ def load_scattering(
         allow_pickle=False,
     )
 
-    expected_shape = tuple(metadata["shape"])
+    K = 1 + J * L + (L * L * J * (J - 1) // 2 if max_order == 2 else 0)
+    expected_shape = (24, 1 if mode == "raw" else 3, K, size // 2**J, size // 2**J)
+    if tuple(metadata["shape"]) != expected_shape or coefficients.dtype != np.float32:
+        raise ValueError("Métadonnées scattering invalides")
+    if hashlib.sha256(paths["data"].read_bytes()).hexdigest() != metadata["sha256"]:
+        raise ValueError("Checksum scattering invalide")
+    if not np.isfinite(coefficients).all():
+        raise ValueError("Coefficients non finis")
 
     if coefficients.shape != expected_shape:
         raise ValueError(
@@ -179,18 +192,19 @@ def _write_cache(paths, coefficients, identity):
     metadata = {
         "identity": identity,
         "shape": list(coefficients.shape),
-        "dtype": str(coefficients.dtype),
+        "dtype": "float32",
+        "sha256": hashlib.sha256(paths["data"].read_bytes()).hexdigest(),
     }
 
-    temporary_metadata = paths["metadata"].with_suffix(".json.tmp")
+    fd, name = tempfile.mkstemp(prefix=".scattering-", suffix=".json", dir=paths["metadata"].parent)
+    temporary_metadata = Path(name)
+    try:
+        with os.fdopen(fd, "w") as stream:
+            json.dump(metadata, stream, indent=2, allow_nan=False)
+        temporary_metadata.replace(paths["metadata"])
+    finally:
+        temporary_metadata.unlink(missing_ok=True)
 
-    temporary_metadata.write_text(
-        json.dumps(metadata, indent=2),
-        encoding="utf-8",
-    )
-
-    temporary_metadata.replace(paths["metadata"])
-    print(f"Cache scattering écrit : {paths['data']} + {paths['metadata']}")
 
 
 def prepare_scattering(
@@ -225,7 +239,13 @@ def prepare_scattering(
     # import local pour éviter une dépendance circulaire
     from .dataset import ClusterDataset
 
-    keys = list(dict.fromkeys(keys))
+    unique = {}
+    for key in keys:
+        cid = data_info[key]["cluster_id"]
+        if cid in unique and scattering_identity(data_info[unique[cid]], mode, size, J, L, max_order) != scattering_identity(data_info[key], mode, size, J, L, max_order):
+            raise ValueError(f"Sources contradictoires pour {cid}")
+        unique.setdefault(cid, key)
+    keys = list(unique.values())
     device = torch.device(device)
 
     scattering = Scattering2D(
@@ -291,10 +311,10 @@ def prepare_scattering(
                 cache=True,
                 processed_dir=processed_dir,
                 scattering_dir=None,
-                task="de_nde",
-                candidate_policy="positive",
+                include_targets=False,
             )
 
+            initial_identity = scattering_identity(info, mode, size, J, L, max_order)
             variants = []
 
             with torch.inference_mode():
@@ -337,6 +357,8 @@ def prepare_scattering(
                 max_order,
             )
 
+            if identity != initial_identity:
+                raise RuntimeError("Les sources ont changé pendant le scattering")
             _write_cache(
                 paths,
                 coefficients,

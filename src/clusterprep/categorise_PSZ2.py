@@ -43,6 +43,7 @@ SOFTWARE.
 
 import os
 import sys
+import re
 import csv
 import shutil
 from pathlib import Path
@@ -92,56 +93,24 @@ def parse_classification(classification_str):
     if not classification_str or classification_str.strip() == '':
         return [(58, 'unclassified')]
     
-    # Normalize: remove whitespace, convert to uppercase for checking
-    cls = classification_str.strip()
-    cls_upper = cls.upper()
-    
+    tokens = set(re.findall(r"(?<![A-Z])(?:CRH|CRR|CDE|NDE|RH|RR|DE|U)(?![A-Z])", classification_str.upper()))
     folders = []
-    
-    # Check for RH (but not cRH)
-    if 'RH' in cls_upper:
-        # Check if it's cRH or standalone RH
-        if 'CRH' in cls_upper:
-            # It's candidate RH
-            folders.append((54, 'cRH'))
-            folders.append((56, 'cDE'))
-        else:
-            # It's confirmed RH
-            folders.append((52, 'RH'))
-            folders.append((50, 'DE'))
-    
-    # Check for RR (but not cRR)
-    if 'RR' in cls_upper:
-        # Check if it's cRR or standalone RR
-        if 'CRR' in cls_upper:
-            # It's candidate RR
-            folders.append((55, 'cRR'))
-            folders.append((56, 'cDE'))
-        else:
-            # It's confirmed RR
-            folders.append((53, 'RR'))
-            # Only add DE if not already added by RH
-            if (50, 'DE') not in folders:
-                folders.append((50, 'DE'))
-    
-    # Check for standalone cDE (not already handled by cRH/cRR)
-    if 'CDE' in cls_upper and not folders:
-        folders.append((56, 'cDE'))
-    
-    # Check for NDE
-    if cls_upper == 'NDE':
-        if not folders:  # Only if no other classification found
-            folders.append((51, 'NDE'))
-    
-    # Check for uncertain
-    if cls_upper == 'U':
-        if not folders:  # Only if no other classification found
-            folders.append((57, 'U'))
-    
-    # Default: unclassified
+    for token, tag, name, parent in (
+        ("RH", 52, "RH", (50, "DE")), ("RR", 53, "RR", (50, "DE")),
+        ("CRH", 54, "cRH", (56, "cDE")), ("CRR", 55, "cRR", (56, "cDE")),
+        ("DE", 50, "DE", None), ("CDE", 56, "cDE", None),
+        ("NDE", 51, "NDE", None), ("U", 57, "U", None),
+    ):
+        if token in tokens:
+            folders.append((tag, name))
+            if parent:
+                folders.append(parent)
+    folders = list(dict.fromkeys(folders))
+    if (51, "NDE") in folders and (50, "DE") in folders:
+        raise ValueError("Annotations DE/NDE contradictoires")
     if not folders:
-        folders.append((58, 'unclassified'))
-    
+        folders = [(58, 'unclassified')]
+
     return folders
 
 
@@ -322,7 +291,7 @@ def classify_files(use_symlink=False):
                     continue
                 
                 # Remove old file if it exists and needs updating
-                if os.path.exists(dst_file):
+                if os.path.lexists(dst_file):
                     try:
                         if os.path.islink(dst_file):
                             os.unlink(dst_file)

@@ -1,4 +1,5 @@
 """Assistant interactif de création des suites JSON d'entraînement."""
+
 from dataclasses import asdict, fields, replace
 import json
 import math
@@ -21,10 +22,18 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
     read = input if input_fn is None else input_fn
     print_fn = print if print_fn is None else print_fn
 
-    def ask(label, default, parser=str, valid=lambda value: True, hint="Valeur invalide"):
+    def ask(
+        label, default, parser=str, valid=lambda value: True, hint="Valeur invalide"
+    ):
         while True:
-            shown = json.dumps(default, ensure_ascii=False) if isinstance(default, (dict, bool)) else default
-            text = read(f"{label} [{shown if shown is not None else 'aucun'}] : ").strip()
+            shown = (
+                json.dumps(default, ensure_ascii=False)
+                if isinstance(default, (dict, bool))
+                else default
+            )
+            text = read(
+                f"{label} [{shown if shown is not None else 'aucun'}] : "
+            ).strip()
             try:
                 value = default if not text else parser(text)
                 if not valid(value):
@@ -47,49 +56,98 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
         return None if text.lower() in {"none", "null", "aucun"} else path(text)
 
     def fraction(label, default):
-        return ask(label, default, float, lambda v: math.isfinite(v) and 0 < v < 1,
-                   "fraction strictement entre 0 et 1")
+        return ask(
+            label,
+            default,
+            float,
+            lambda v: math.isfinite(v) and 0 < v < 1,
+            "fraction strictement entre 0 et 1",
+        )
 
     def seed(label, default):
-        return ask(label, default, int, lambda v: 0 <= v < 2**32, "entier entre 0 et 2**32-1")
+        return ask(
+            label, default, int, lambda v: 0 <= v < 2**32, "entier entre 0 et 2**32-1"
+        )
 
     try:
-        print_fn("Création d'une configuration clusterprep. Entrée conserve la valeur proposée ; Ctrl+C annule.")
-        print_fn("Les chemins sont enregistrés en absolu. Les données ne sont pas chargées.")
-        data_dir = ask("Dossier des données classifiées", path("scratch/data/PSZ2/classified"), path)
+        print_fn(
+            "Création d'une configuration clusterprep. Entrée conserve la valeur proposée ; Ctrl+C annule."
+        )
+        print_fn(
+            "Les chemins sont enregistrés en absolu. Les données ne sont pas chargées."
+        )
+        data_dir = ask(
+            "Dossier des données classifiées",
+            path("scratch/data/PSZ2/classified"),
+            path,
+        )
         output_dir = ask("Dossier des résultats", path("results/experiments"), path)
-        classes = ask("Classes, séparées par des virgules", list(CLASS_NAMES),
-                      lambda text: [s.strip() for s in text.split(",")],
-                      lambda v: len(v) >= 2 and all(v) and len(set(v)) == len(v),
-                      "au moins deux classes distinctes et non vides")
+        classes = ask(
+            "Classes, séparées par des virgules",
+            list(CLASS_NAMES),
+            lambda text: [s.strip() for s in text.split(",")],
+            lambda v: len(v) >= 2 and all(v) and len(set(v)) == len(v),
+            "au moins deux classes distinctes et non vides",
+        )
         split_seed = seed("Graine des splits", 42)
-        folds = ask("Nombre de folds (aucun = séparation classique)", None,
-                    lambda text: None if text.lower() in {"aucun", "none", "null"} else int(text),
-                    lambda v: v is None or v >= 2, "au moins 2 folds, ou aucun")
+        folds = ask(
+            "Nombre de folds (aucun = séparation classique)",
+            None,
+            lambda text: (
+                None if text.lower() in {"aucun", "none", "null"} else int(text)
+            ),
+            lambda v: v is None or v >= 2,
+            "au moins 2 folds, ou aucun",
+        )
         split = {"split_seed": split_seed}
         if folds is None:
-            test_size = fraction("Fraction test", .2)
+            test_size = fraction("Fraction test", 0.2)
             split["test_size"] = test_size
         else:
             test_size = 1 / folds
-            split.update(n_folds=folds, fold_index=ask("Index du fold de test", 0, int,
-                         lambda v: 0 <= v < folds, f"entier de 0 à {folds - 1}"))
-        split["val_size"] = ask("Fraction validation (du jeu complet)", .2, float,
+            split.update(
+                n_folds=folds,
+                fold_index=ask(
+                    "Index du fold de test",
+                    0,
+                    int,
+                    lambda v: 0 <= v < folds,
+                    f"entier de 0 à {folds - 1}",
+                ),
+            )
+        split["val_size"] = ask(
+            "Fraction validation (du jeu complet)",
+            0.2,
+            float,
             lambda v: math.isfinite(v) and 0 < v < 1 - test_size,
-            "fraction positive ; test + validation doit être inférieur à 1")
+            "fraction positive ; test + validation doit être inférieur à 1",
+        )
 
         experiments = []
         available = list_models()
         defaults = ExperimentConfig(name="experience_1")
         labels = {
-            "size": "Taille des images", "width": "Largeur du CNN (width)",
-            "batch_size": "Taille des lots", "epochs": "Nombre maximal d'époques",
-            "learning_rate": "Learning rate", "weight_decay": "Weight decay",
-            "augment": "Data augmentation (oui/non)", "cache": "Cache mémoire (oui/non)",
-            "processed_dir": "Cache FITS (aucun pour désactiver)", "verbose": "Progression (oui/non)",
-            "num_workers": "Nombre de workers", "device": "Device (cpu, mps, cuda ou cuda:0)",
+            "task": "Tâche (de_nde, rr_rh)",
+            "thresholds": "Seuils RR/RH (objet JSON)",
+            "threshold_selection": "Sélection des seuils (fixed, f1, recall_at_precision)",
+            "threshold_min_precision": "Précision minimale pour sélectionner le seuil",
+            "threshold_grid": "Grille de seuils sur validation (liste JSON)",
+            "candidate_policy": "Candidats (positive, ignore)",
+            "size": "Taille des images",
+            "width": "Largeur du CNN (width)",
+            "batch_size": "Taille des lots",
+            "epochs": "Nombre maximal d'époques",
+            "learning_rate": "Learning rate",
+            "weight_decay": "Weight decay",
+            "augment": "Data augmentation (oui/non)",
+            "cache": "Cache mémoire (oui/non)",
+            "processed_dir": "Cache FITS (aucun pour désactiver)",
+            "verbose": "Progression (oui/non)",
+            "num_workers": "Nombre de workers",
+            "device": "Device (cpu, mps, cuda ou cuda:0)",
             "monitor": "Early stopping (val_loss, val_macro_f1, val_balanced_accuracy)",
-            "patience": "Patience", "min_delta": "Amélioration minimale",
+            "patience": "Patience",
+            "min_delta": "Amélioration minimale",
             "class_weight": "Pondération des classes (none/balanced)",
             "use_class_weights": "Activer les poids de classes (oui/non)",
             "label_smoothing": "Label smoothing (0 pour désactiver)",
@@ -104,17 +162,34 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
             "drop_last_train": "Exclure le dernier lot train incomplet (oui/non)",
         }
         while True:
-            print_fn(f"\nExpérience {len(experiments) + 1} — modèles : {', '.join(available)}")
-            print_fn("Modèle externe accepté : module:Constructeur. Paramètres propres au modèle en JSON.")
-            name = ask("Nom de l'expérience", f"experience_{len(experiments) + 1}", str,
-                       lambda v: v not in {c['name'] for c in experiments} and _valid_field(defaults, "name", v),
-                       "nom unique composé de lettres, chiffres, tirets, points ou underscores")
-            mode = ask("Mode (raw, pair, multimodal)", defaults.mode, str,
-                       lambda v: v in {"raw", "pair", "multimodal"})
-            model = ask("Modèle", defaults.model, str,
-                        lambda v: (v in available and mode in available[v]) or
-                        (":" in v and all(v.split(":", 1))),
-                        "modèle inconnu ou incompatible avec le mode")
+            print_fn(
+                f"\nExpérience {len(experiments) + 1} — modèles : {', '.join(available)}"
+            )
+            print_fn(
+                "Modèle externe accepté : module:Constructeur. Paramètres propres au modèle en JSON."
+            )
+            name = ask(
+                "Nom de l'expérience",
+                f"experience_{len(experiments) + 1}",
+                str,
+                lambda v: v not in {c["name"] for c in experiments}
+                and _valid_field(defaults, "name", v),
+                "nom unique composé de lettres, chiffres, tirets, points ou underscores",
+            )
+            mode = ask(
+                "Mode (raw, pair, multimodal)",
+                defaults.mode,
+                str,
+                lambda v: v in {"raw", "pair", "multimodal"},
+            )
+            model = ask(
+                "Modèle",
+                defaults.model,
+                str,
+                lambda v: (v in available and mode in available[v])
+                or (":" in v and all(v.split(":", 1))),
+                f"modèle inconnu ou incompatible avec le mode \n {list_models()}",
+            )
             config = replace(defaults, name=name, mode=mode, model=model)
             config = replace(config, seed=seed("Graine du modèle", defaults.seed))
             for item in fields(config):
@@ -122,36 +197,60 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
                 if key in {"name", "mode", "model", "seed", "model_params"}:
                     continue
                 default = getattr(config, key)
-                if key == "processed_dir":
+                if key in {"thresholds", "threshold_grid"}:
+                    parser = json.loads
+                elif key == "processed_dir":
                     default = path(default) if default is not None else None
                     parser = optional_path
                 elif isinstance(default, bool):
                     parser = boolean
                 else:
                     parser = type(default)
+
                 def valid(value, key=key):
                     if key == "device":
                         import torch
+
                         try:
                             return torch.device(value).type in {"cpu", "mps", "cuda"}
                         except (ValueError, RuntimeError):
                             return False
                     return _valid_field(config, key, value)
+
                 value = ask(labels.get(key, key), default, parser, valid)
                 config = replace(config, **{key: value})
-            params_default = {"hidden_dim": 32, "classifier_hidden_dim": 32} if model == "image_cnn" else {}
+            params_default = (
+                {"hidden_dim": 32, "classifier_hidden_dim": 32}
+                if model == "image_cnn"
+                else {}
+            )
             while True:
-                params = ask("Paramètres du modèle (objet JSON)", params_default, json.loads,
-                             lambda v: isinstance(v, dict), "objet JSON requis")
+                params = ask(
+                    "Paramètres du modèle (objet JSON)",
+                    params_default,
+                    json.loads,
+                    lambda v: isinstance(v, dict),
+                    "objet JSON requis",
+                )
                 try:
                     config = replace(config, model_params=params)
                     # Valide constructeur, paramètres et modes, sans FITS ni transfert GPU.
-                    instance = build_model(config, len(classes))
+                    instance = build_model(config, 2)
                     import torch
-                    if config.batch_size < 2 and any(isinstance(m, torch.nn.modules.batchnorm._BatchNorm)
-                                                    for m in instance.modules()):
-                        config = replace(config, batch_size=ask("BatchNorm : taille des lots (minimum 2)", 2,
-                                         int, lambda v: v >= 2))
+
+                    if config.batch_size < 2 and any(
+                        isinstance(m, torch.nn.modules.batchnorm._BatchNorm)
+                        for m in instance.modules()
+                    ):
+                        config = replace(
+                            config,
+                            batch_size=ask(
+                                "BatchNorm : taille des lots (minimum 2)",
+                                2,
+                                int,
+                                lambda v: v >= 2,
+                            ),
+                        )
                     del instance
                     break
                 except (ValueError, TypeError, ImportError, RuntimeError) as error:
@@ -163,20 +262,48 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
                 break
         paired = any(c["mode"] == "pair" for c in experiments)
         cohorts = {"paired"} if paired else {"all", "paired", "raw_only"}
-        cohort = ask("Cohorte de comparaison (" + ", ".join(sorted(cohorts)) + ")",
-                     "paired" if paired else "all", str, lambda v: v in cohorts)
-        spec = {"data_dir": data_dir, "output_dir": output_dir, "class_names": classes,
-                "split": split, "comparison_cohort": cohort, "experiments": experiments}
-        destination = Path(output_path).expanduser().resolve() if output_path is not None else Path(
-            ask("Fichier JSON à créer", path("training_config.json"), path))
-        print_fn(f"\n{len(experiments)} expérience(s), classes {', '.join(classes)}, comparaison {cohort}.")
+        cohort = ask(
+            "Cohorte de comparaison (" + ", ".join(sorted(cohorts)) + ")",
+            "paired" if paired else "all",
+            str,
+            lambda v: v in cohorts,
+        )
+        if any(c["task"] == "rr_rh" for c in experiments) and classes == list(
+            CLASS_NAMES
+        ):
+            print_fn(
+                "RR/RH : découverte automatique des catégories présentes (DE, NDE, RR, RH, cRR, cRH)."
+            )
+            classes = None
+        spec = {
+            "data_dir": data_dir,
+            "output_dir": output_dir,
+            "class_names": classes,
+            "split": split,
+            "comparison_cohort": cohort,
+            "experiments": experiments,
+        }
+        destination = (
+            Path(output_path).expanduser().resolve()
+            if output_path is not None
+            else Path(ask("Fichier JSON à créer", path("training_config.json"), path))
+        )
+        print_fn(
+            f"\n{len(experiments)} expérience(s), classes {', '.join(classes) if classes else 'détection automatique'}, comparaison {cohort}."
+        )
         for c in experiments:
-            print_fn(f"  {c['name']} : {c['model']} / {c['mode']}, {c['epochs']} époques max, device={c['device']}")
-        if destination.exists() and not ask(f"{destination} existe. Remplacer (oui/non)", False, boolean):
+            print_fn(
+                f"  {c['name']} : {c['model']} / {c['mode']}, {c['epochs']} époques max, device={c['device']}"
+            )
+        if destination.exists() and not ask(
+            f"{destination} existe. Remplacer (oui/non)", False, boolean
+        ):
             print_fn("Annulé : fichier existant conservé.")
             return None
         destination.parent.mkdir(parents=True, exist_ok=True)
-        fd, temporary = tempfile.mkstemp(prefix=".config-", suffix=".json", dir=destination.parent)
+        fd, temporary = tempfile.mkstemp(
+            prefix=".config-", suffix=".json", dir=destination.parent
+        )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 json.dump(spec, stream, indent=2, ensure_ascii=False, allow_nan=False)

@@ -113,7 +113,9 @@ def build_criterion(
                 dtype=torch.float32,
                 device=device,
             )
-            negative_counts = n_train - positive_counts
+            negative_counts = torch.as_tensor(n_train, dtype=torch.float32, device=device) - positive_counts
+            if positive_counts.shape != (2,) or not torch.isfinite(positive_counts).all() or not torch.isfinite(negative_counts).all() or (negative_counts <= 0).any():
+                raise ValueError("Effectifs RR/RH finis : positifs et négatifs connus requis par label")
             if (positive_counts <= 0).any():
                 raise ValueError(
                     "Chaque label RR/RH doit avoir au moins "

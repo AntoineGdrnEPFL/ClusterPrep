@@ -9,50 +9,43 @@ import hashlib
 
 CLASS_NAMES = ("DE", "NDE")
 
-def get_data_info_dict(data_dir: str | Path, class_names: Tuple[str, ...] = CLASS_NAMES) -> Dict[str, Dict[str, str]]:
-    """
-    Get a dictionary containing information about the data files in the specified directory.
+def get_data_info_dict(data_dir, class_names=None):
+    """Une entrée par nom FITS, annotations fusionnées et sources vérifiées.
 
-    Args:
-        data_dir (str | Path): The directory containing the data files.
-        class_names (List[str]): A list of class names.
-    Returns:
-        Dict[str, Dict[str, str]]: A dictionary containing information about the data files.
+    Sans liste explicite, découvre les six catégories présentes.
     """
+    from .labels import ANNOTATION_NAMES, labels_for
     data_dir = Path(data_dir)
+    names = tuple(class_names) if class_names is not None else tuple(
+        name for name in ANNOTATION_NAMES if (data_dir / "RAW" / name).is_dir())
+    if not names:
+        raise ValueError("Aucun répertoire RAW annoté trouvé")
     data_info = {}
-    for class_name in class_names:
-        class_dir_raw = data_dir / "RAW" / class_name
-        class_dir_chandra = data_dir / "CHANDRA" / class_name
-        if not class_dir_raw.exists():
-            raise ValueError(f"Le répertoire {class_dir_raw} n'existe pas.")
-        for file in sorted(class_dir_raw.glob("*.fits")):
-            cluster_id = file.stem
-            chandra_file = (
-                class_dir_chandra
-                / file.name.replace(
-                    ".fits",
-                    "CHANDRA.fits",
-                )
-            )
-            if cluster_id not in data_info:
-                data_info[cluster_id] = {
-                    "cluster_id": cluster_id,
-                    "raw_path": str(file),
-                    "chandra_path": (
-                        str(chandra_file)
-                        if chandra_file.exists()
-                        else None
-                    ),
-                    "name": file.name,
-                    "labels": set(),
-                    "size": str(file.stat().st_size),
-                    "hash": hashlib.md5(file.read_bytes()).hexdigest(),
-                }
-            info = data_info[cluster_id]
+    for class_name in names:
+        directory = data_dir / "RAW" / class_name
+        if not directory.is_dir():
+            raise ValueError(f"Le répertoire {directory} n'existe pas.")
+        for file in sorted(directory.glob("*.fits")):
+            key = file.name  # interface historique ; cluster_id sans extension
+            digest = hashlib.sha256(file.read_bytes()).hexdigest()
+            info = data_info.setdefault(key, {
+                "cluster_id": file.stem, "raw_path": str(file), "chandra_path": None,
+                "name": file.name, "labels": set(), "size": str(file.stat().st_size), "hash": digest,
+            })
+            if info["hash"] != digest:
+                raise ValueError(f"Fichier dupliqué avec contenu différent : {file}")
             info["labels"].add(class_name)
-            if info["hash"] != hashlib.md5(file.read_bytes()).hexdigest():
-                raise ValueError(f"Le fichier {file} a un hash différent de celui attendu.")
+            labels_for(info)
+    # CHANDRA peut se trouver dans une autre catégorie que le premier RAW rencontré.
+    for directory in sorted((data_dir / "CHANDRA").glob("*")):
+        for file in sorted(directory.glob("*CHANDRA.fits")):
+            key = file.name.removesuffix("CHANDRA.fits") + ".fits"
+            if key not in data_info:
+                continue
+            info = data_info[key]
+            if info["chandra_path"] and Path(info["chandra_path"]).read_bytes() != file.read_bytes():
+                raise ValueError(f"Sources CHANDRA contradictoires : {file}")
+            info["chandra_path"] = info["chandra_path"] or str(file)
     return data_info
 
 def get_pairs(data_info: Dict[str, Dict[str, str]]) -> List[Dict[str, str]]:

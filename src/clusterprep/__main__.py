@@ -53,7 +53,7 @@ def main(argv=None):
     if args.config is None:
         parser.error("Un fichier de configuration est requis")
     spec = json.loads(args.config.read_text())
-    classes = spec.get("class_names", list(CLASS_NAMES))
+    classes = spec.get("class_names")
     info = get_data_info_dict(spec["data_dir"], classes)
     configs = [ExperimentConfig(**item) for item in spec["experiments"]]
     if args.quiet:
@@ -63,13 +63,24 @@ def main(argv=None):
     if not configs:
         parser.error("La suite doit contenir au moins une expérience")
     output = Path(spec.get("output_dir", "results/experiments"))
-    runs = run_experiments(info, configs, output, class_names=classes,
+    runs = run_experiments(info, configs, output, class_names=classes or CLASS_NAMES,
                            **spec.get("split", {}))
     # Le fichier de comparaison appartient à cette suite et ne remplace pas une autre.
     table = output / f"comparison-{runs[0].name}.csv"
     default_cohort = "paired" if any(c.mode == "pair" for c in configs) else "all"
-    compare_experiments(runs, table, cohort=spec.get("comparison_cohort", default_cohort))
-    print(json.dumps({"runs": list(map(str, runs)), "comparison": str(table)}, indent=2))
+    tables = []
+    if len({c.task for c in configs}) == 1:
+        compare_experiments(runs, table, cohort=spec.get("comparison_cohort", default_cohort))
+        tables.append(table)
+    else:
+        for task in sorted({c.task for c in configs}):
+            task_table = table.with_name(table.stem + "-" + task + ".csv")
+            tables.append(task_table)
+            compare_experiments([run for run, c in zip(runs, configs) if c.task == task],
+                task_table,
+                cohort=spec.get("comparison_cohort", default_cohort))
+        table = None
+    print(json.dumps({"runs": list(map(str, runs)), "comparison": str(table) if table else None, "comparisons": list(map(str, tables))}, indent=2))
 
 
 if __name__ == "__main__":

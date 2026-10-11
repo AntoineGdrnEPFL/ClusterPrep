@@ -171,3 +171,74 @@ Conserver `notebooks/training_analysis.py` à côté du notebook. L'analyse ne
 charge ni FITS ni checkpoints et ne requiert pas de GPU. Dépendances : `numpy`,
 `pandas`, `matplotlib`, `scikit-learn`, `ipython` ; `ipywidgets` est facultatif
 (une sélection par noms de dossiers est également disponible).
+
+### Audit et tâches DE/NDE / RR/RH
+
+La pipeline accepte `task="de_nde"` (CrossEntropy, labels entiers) et
+`task="rr_rh"` (BCEWithLogits, cibles float `[RR, RH]`). Les forwards renvoient
+les logits ; l'évaluation utilise respectivement softmax et sigmoid.
+L'inventaire découvre les catégories présentes lorsque `class_names` est absent
+ou `null` dans le JSON. Les clés historiques sont les noms `*.fits` ;
+`cluster_id` est le nom sans extension. Les copies identiques sont fusionnées,
+les contenus divergents et les annotations DE/NDE contradictoires sont refusés.
+Les anciens dictionnaires avec `class` restent acceptés à travers un adaptateur.
+
+`candidate_policy="positive"` rend cRR/cRH positifs. Avec `"ignore"`,
+`label_mask` vaut zéro uniquement pour les candidats sans confirmation du même
+label. La loss, les poids positifs, les métriques et les colonnes `known_RR` /
+`known_RH` des prédictions respectent ce masque. Une confirmation prime sur un
+candidat. L'ancienne valeur ambiguë `"all"` est refusée explicitement.
+
+**Convention RR/RH :** NDE donne `[0,0]`, RR `[1,0]`, RH `[0,1]`,
+RR+RH `[1,1]`. DE sans caractérisation RR/RH est exclu. NDE associé à DE,
+RR/RH ou un candidat est contradictoire et refusé. Les candidats `ignore`
+restent masqués (strates `?0`, `0?`, `??`, etc.), jamais des négatifs confirmés.
+Le train doit contenir des positifs et négatifs connus pour chaque label.
+L'inventaire doit inclure NDE : utiliser `class_names: null` pour découvrir
+les dossiers, ou inclure explicitement NDE dans la sélection des fichiers.
+
+Les splits regroupent les annotations par identifiant avant augmentation.
+Les quatre combinaisons sont stratifiées aux deux séparations et dans les folds.
+Si leurs effectifs sont insuffisants, `iterative-stratification>=0.1.9` répartit
+les états positifs, négatifs et inconnus ; aucun repli aléatoire RR/RH n'est utilisé.
+Les effectifs très faibles ne permettent pas de garantir toutes les classes
+partout. `split_distribution.json` compte les amas uniques et indique si
+chaque ROC-AUC est définie. Le mode pair RR/RH stratifie sa propre population
+CHANDRA ; les comparaisons exigent des cohortes identiques. Les poids utilisent
+uniquement les annotations connues du train. Le meilleur checkpoint est choisi
+sur validation ; les seuils valent 0,5 par défaut et peuvent être sélectionnés
+sur validation uniquement. Le test est évalué après restauration et fixation des seuils. La loss CE pondérée de l'époque est maintenant agrégée selon sa
+normalisation globale, indépendamment du découpage des lots.
+
+Les SSN utilisent automatiquement un précalcul des 24 variantes normalisées et
+augmentées. `model_params` expose `J`, `L`, `max_order` ; le cache se trouve dans
+`processed_dir/scattering` (ou `processed/scattering` si `processed_dir=null`).
+MixUp est désactivé pour ces modèles. Le cache ne dépend ni des labels ni de la
+tâche. Les signatures sources utilisent chemin, taille, mtime et ctime ; un
+checksum SHA-256 valide le fichier de coefficients. La version scattering 2
+reconstruit les anciens caches ; les FITS existants dont la provenance ne
+comprend pas ctime sont également reconstruits, sans modifier les sources.
+
+Pour exécuter les tests depuis le répertoire parent :
+
+```bash
+.venv/bin/python -m pip install -e './clusterprep[scattering,test,download]'
+PYTHONPATH=clusterprep/src MPLBACKEND=Agg .venv/bin/python -m pytest clusterprep/tests -q
+PYTHONPATH=clusterprep/src MPLBACKEND=Agg .venv/bin/python clusterprep/examples/audit_smoke.py results/nouvel_audit
+```
+
+`audit_smoke.py` refuse un dossier déjà existant, crée 60 amas synthétiques,
+exécute les quatre commandes CLI et conserve quatre entraînements de deux
+époques avec leurs artefacts. Voir `AUDIT_REPORT.md` pour les résultats et les
+limites de la validation.
+
+### Notebook d'analyse multi-label
+
+Le notebook [`notebooks/analyse_multilabel.ipynb`](notebooks/analyse_multilabel.ipynb)
+contrôle les artefacts RR/RH, affiche les scores et courbes par label, choisit
+optionnellement les seuils sur validation et compare les mêmes cohortes test
+avec bootstrap de clusters. Il inclut un mode synthétique autonome.
+
+Voir le [guide de lancement et contrat d'entrée](notebooks/README_multilabel.md)
+pour les nouvelles options `thresholds`, `threshold_selection`, les anciens
+schémas supportés et les limites scientifiques des annotations.

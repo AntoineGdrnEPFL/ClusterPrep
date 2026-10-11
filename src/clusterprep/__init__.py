@@ -4,9 +4,9 @@ from .preprocessing import block_average, centered_raw_window, normalize, prepro
 from .dataset import ClusterDataset
 from .splits import split_data_keys
 from .visualization import plot_sample, plot_comparison, plot_history
-from .models import (SimpleCNN, FusionCNN, ImageCNN, DualSSN, DualEncoderSSN,
+from .models import (SimpleCNN, FusionCNN, ImageCNN, DualEncoderCNN, DualSSN, DualEncoderSSN,
                      build_model, register_model, list_models)
-from .metrics import classification_metrics
+from .metrics import classification_metrics, multilabel_metrics
 from .training import (ExperimentConfig, EarlyStopping, run_experiment,
                        run_experiments, compare_experiments)
 
@@ -41,3 +41,8 @@ __all__ += [
     "load_scattering",
     "scattering_paths",
 ]
+
+__all__ += ["DualEncoderCNN", "multilabel_metrics"]
+
+from .metrics import select_multilabel_thresholds, resolve_thresholds
+__all__ += ["select_multilabel_thresholds", "resolve_thresholds"]

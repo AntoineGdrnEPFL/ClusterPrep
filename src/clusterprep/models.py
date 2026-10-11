@@ -352,6 +352,7 @@ class DualSSNEncoder(nn.Module):
                 width,
             )
             scat = temporary_scattering(dummy).flatten(1, 2)
+        self.scattering_shape = (channels, scat.shape[1] // channels, *scat.shape[-2:])
         scat_channels = scat.shape[1]
         del temporary_scattering
         scat_blocks = [
@@ -389,7 +390,7 @@ class DualSSNEncoder(nn.Module):
         # [B,C,K,Hs,Ws]
         #       ↓
         # [B,C*K,Hs,Ws]
-        if scattering.ndim != 5:
+        if scattering.ndim != 5 or scattering.shape[0] != x.shape[0] or tuple(scattering.shape[1:]) != self.scattering_shape:
             raise ValueError("Scattering attendu sous forme [B,C,K,Hs,Ws]")
         scat = scattering.flatten(1, 2)
         scat = self.conv_to_latent_scat(scat).flatten(1)

@@ -22,7 +22,7 @@ def _identity(info, mode, size):
             raise ValueError(f"Fichier manquant : {name}")
         path = Path(info[name]).resolve()
         stat = path.stat()
-        sources[name] = [str(path), stat.st_size, stat.st_mtime_ns]
+        sources[name] = [str(path), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
     return {"version": CACHE_VERSION, "mode": mode, "size": size, "sources": sources}
 
 
