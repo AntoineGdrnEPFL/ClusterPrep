@@ -11,7 +11,6 @@ import torch
 
 from .progress import progress, message
 
-
 SCATTERING_CACHE_VERSION = 1
 
 
@@ -54,20 +53,17 @@ def scattering_identity(
         "J": J,
         "L": L,
         "max_order": max_order,
-
         # Important : le scattering est calculé APRES cette normalisation.
         "normalization": {
             "percentile_lo": 30,
             "percentile_hi": 99,
             "alpha": 10.0,
         },
-
         # Important également : les 24 variantes sont précalculées.
         "augmentation": {
             "rotations": list(range(0, 360, 30)),
             "horizontal_flip": [False, True],
         },
-
         "sources": _source_signature(info),
     }
 
@@ -124,9 +120,7 @@ def load_scattering(
     )
 
     if not paths["data"].exists() or not paths["metadata"].exists():
-        raise FileNotFoundError(
-            f"Cache scattering absent pour {info['cluster_id']}"
-        )
+        raise FileNotFoundError(f"Cache scattering absent pour {info['cluster_id']}")
 
     metadata = json.loads(paths["metadata"].read_text())
 
@@ -140,9 +134,7 @@ def load_scattering(
     )
 
     if metadata["identity"] != expected:
-        raise ValueError(
-            f"Cache scattering invalide pour {info['cluster_id']}"
-        )
+        raise ValueError(f"Cache scattering invalide pour {info['cluster_id']}")
 
     coefficients = np.load(
         paths["data"],
@@ -154,8 +146,7 @@ def load_scattering(
 
     if coefficients.shape != expected_shape:
         raise ValueError(
-            f"Shape scattering invalide : "
-            f"{coefficients.shape} != {expected_shape}"
+            f"Shape scattering invalide : " f"{coefficients.shape} != {expected_shape}"
         )
 
     return coefficients
@@ -216,6 +207,8 @@ def prepare_scattering(
     device="cpu",
     verbose=True,
     force=False,
+    task="de_nde",
+    candidate_policy="positive",
 ):
     """
     Précalcule les 24 scattering de chaque amas.
@@ -298,6 +291,8 @@ def prepare_scattering(
                 cache=True,
                 processed_dir=processed_dir,
                 scattering_dir=None,
+                task="de_nde",
+                candidate_policy="positive",
             )
 
             variants = []
@@ -326,9 +321,7 @@ def prepare_scattering(
                     coeff = scattering(x)
 
                     # -> [C,K,Hs,Ws]
-                    variants.append(
-                        coeff.squeeze(0).cpu().numpy()
-                    )
+                    variants.append(coeff.squeeze(0).cpu().numpy())
 
             coefficients = np.stack(
                 variants,

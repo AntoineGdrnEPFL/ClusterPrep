@@ -1,11 +1,22 @@
 """Séparations stratifiées sans fuite entre amas."""
+
 from collections import defaultdict
 from sklearn.model_selection import StratifiedKFold, train_test_split
+
+
+def eligible_for_task(info, task):
+    labels = info["labels"]
+    if task == "de_nde":
+        return "DE" in labels or "NDE" in labels
+    if task == "rr_rh":
+        return bool(labels & {"RR", "RH", "cRR", "cRH"})
+    raise ValueError(f"Tâche inconnue : {task}")
 
 
 def split_data_keys(
     data_info,
     mode="raw",
+    task="de_nde",
     test_size=0.20,
     val_size=0.20,
     seed=42,
@@ -15,20 +26,24 @@ def split_data_keys(
     """Sépare les données par cluster, avec un fold de test optionnel."""
     if mode not in {"raw", "pair", "multimodal"}:
         raise ValueError("mode doit être raw, pair ou multimodal")
-    if not 0 < test_size < 1 or not 0 < val_size < 1 or (n_folds is None and test_size + val_size >= 1):
+    if (
+        not 0 < test_size < 1
+        or not 0 < val_size < 1
+        or (n_folds is None and test_size + val_size >= 1)
+    ):
         raise ValueError("test_size + val_size doit être < 1")
     if n_folds is not None:
         if not isinstance(n_folds, int) or n_folds < 2:
             raise ValueError("n_folds doit être un entier supérieur ou égal à 2")
         if not isinstance(fold_index, int) or not 0 <= fold_index < n_folds:
-            raise ValueError(
-                f"fold_index doit être compris entre 0 et {n_folds - 1}"
-            )
+            raise ValueError(f"fold_index doit être compris entre 0 et {n_folds - 1}")
 
     # Sélection des observations disponibles pour l'expérience.
     eligible_keys = [
-        key for key, info in data_info.items()
-        if mode != "pair" or info.get("chandra_path")
+        key
+        for key, info in data_info.items()
+        if eligible_for_task(info, task)
+        and (mode != "pair" or info.get("chandra_path"))
     ]
 
     # Regroupement des clés par cluster.
@@ -43,9 +58,7 @@ def split_data_keys(
             cluster_id in class_by_cluster
             and class_by_cluster[cluster_id] != info["class"]
         ):
-            raise ValueError(
-                f"Classes contradictoires pour {cluster_id}"
-            )
+            raise ValueError(f"Classes contradictoires pour {cluster_id}")
 
         keys_by_cluster[cluster_id].append(key)
         class_by_cluster[cluster_id] = info["class"]
@@ -93,9 +106,7 @@ def split_data_keys(
 
     def keys_for(cluster_subset):
         return [
-            key
-            for cluster_id in cluster_subset
-            for key in keys_by_cluster[cluster_id]
+            key for cluster_id in cluster_subset for key in keys_by_cluster[cluster_id]
         ]
 
     return keys_for(train_ids), keys_for(val_ids), keys_for(test_ids)

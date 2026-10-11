@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS, FITSFixedWarning
+import hashlib
 
 CLASS_NAMES = ("DE", "NDE")
 
@@ -26,19 +27,32 @@ def get_data_info_dict(data_dir: str | Path, class_names: Tuple[str, ...] = CLAS
         if not class_dir_raw.exists():
             raise ValueError(f"Le répertoire {class_dir_raw} n'existe pas.")
         for file in sorted(class_dir_raw.glob("*.fits")):
-            if file.name in data_info:
-                raise ValueError(f"Nom FITS dupliqué entre classes : {file.name}")
-            chandra_file = class_dir_chandra / str.replace(file.name, ".fits", "CHANDRA.fits")
-            if not chandra_file.exists():
-                chandra_file = None
-            data_info[file.name] = {
-                "cluster_id": file.stem,
-                "raw_path": str(file),
-                "chandra_path": str(chandra_file) if chandra_file else None,
-                "name": file.name,
-                "class": class_name,
-                "size": str(file.stat().st_size)
-            }
+            cluster_id = file.stem
+            chandra_file = (
+                class_dir_chandra
+                / file.name.replace(
+                    ".fits",
+                    "CHANDRA.fits",
+                )
+            )
+            if cluster_id not in data_info:
+                data_info[cluster_id] = {
+                    "cluster_id": cluster_id,
+                    "raw_path": str(file),
+                    "chandra_path": (
+                        str(chandra_file)
+                        if chandra_file.exists()
+                        else None
+                    ),
+                    "name": file.name,
+                    "labels": set(),
+                    "size": str(file.stat().st_size),
+                    "hash": hashlib.md5(file.read_bytes()).hexdigest(),
+                }
+            info = data_info[cluster_id]
+            info["labels"].add(class_name)
+            if info["hash"] != hashlib.md5(file.read_bytes()).hexdigest():
+                raise ValueError(f"Le fichier {file} a un hash différent de celui attendu.")
     return data_info
 
 def get_pairs(data_info: Dict[str, Dict[str, str]]) -> List[Dict[str, str]]:

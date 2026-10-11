@@ -1,4 +1,5 @@
 """Petits modèles de référence ; les expériences acceptent aussi une factory."""
+
 import importlib
 import inspect
 import torch
@@ -22,6 +23,7 @@ def register_model(name, *, modes=("raw", "pair", "multimodal")):
             raise TypeError("Le constructeur doit être appelable")
         _MODELS[name] = (constructor, modes)
         return constructor
+
     return decorate
 
 
@@ -32,9 +34,15 @@ def list_models():
 
 def _encoder(channels, width):
     return nn.Sequential(
-        nn.Conv2d(channels, width, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-        nn.Conv2d(width, width * 2, 3, padding=1), nn.ReLU(),
-        nn.AdaptiveAvgPool2d(1), nn.Flatten())
+        nn.Conv2d(channels, width, 3, padding=1),
+        nn.ReLU(),
+        nn.MaxPool2d(2),
+        nn.Conv2d(width, width * 2, 3, padding=1),
+        nn.ReLU(),
+        nn.AdaptiveAvgPool2d(1),
+        nn.Flatten(),
+    )
+
 
 class ImageEncoder(nn.Module):
     """
@@ -51,14 +59,11 @@ class ImageEncoder(nn.Module):
             nn.BatchNorm2d(8, momentum=0.1),
             nn.LeakyReLU(0.2),
             nn.Dropout2d(0.3),
-
             nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(16, momentum=0.1),
             nn.LeakyReLU(0.2),
             nn.Dropout2d(0.3),
-
             nn.MaxPool2d(kernel_size=2, stride=2),
-
             nn.Conv2d(16, 32, kernel_size=5, stride=1, padding=2),
             nn.BatchNorm2d(32, momentum=0.1),
             nn.LeakyReLU(0.2),
@@ -70,17 +75,14 @@ class ImageEncoder(nn.Module):
             nn.BatchNorm2d(32, momentum=0.1),
             nn.LeakyReLU(0.2),
             nn.Dropout2d(0.4),
-
             nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32, momentum=0.1),
             nn.LeakyReLU(0.2),
             nn.Dropout2d(0.4),
-
             nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32, momentum=0.1),
             nn.LeakyReLU(0.2),
             nn.Dropout2d(0.4),
-
             nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32, momentum=0.1),
             nn.LeakyReLU(0.2),
@@ -108,6 +110,7 @@ class ImageEncoder(nn.Module):
 @register_model("cnn")
 class SimpleCNN(nn.Module):
     """Fusion précoce : un canal radio ou radio/Chandra/masque concaténés."""
+
     def __init__(self, in_channels=1, num_classes=2, width=16):
         super().__init__()
         self.encoder = _encoder(in_channels, width)
@@ -120,6 +123,7 @@ class SimpleCNN(nn.Module):
 @register_model("fusion", modes=("pair", "multimodal"))
 class FusionCNN(nn.Module):
     """Deux branches ; la branche X est annulée si sa couverture est nulle."""
+
     def __init__(self, num_classes=2, width=16):
         super().__init__()
         self.radio = _encoder(1, width)
@@ -131,6 +135,7 @@ class FusionCNN(nn.Module):
         coverage = x[:, 2:3].mean(dim=(2, 3))
         x_features = self.chandra(x[:, 1:3]) * (coverage > 0).to(x.dtype)
         return self.classifier(torch.cat([raw_features, x_features, coverage], dim=1))
+
 
 @register_model("image_cnn")
 class ImageCNN(nn.Module):
@@ -151,18 +156,17 @@ class ImageCNN(nn.Module):
             nn.BatchNorm1d(hidden_dim),
             nn.LeakyReLU(0.2),
             nn.Dropout(0.5),
-
             nn.Linear(hidden_dim, classifier_hidden_dim),
             nn.BatchNorm1d(classifier_hidden_dim),
             nn.LeakyReLU(0.2),
             nn.Dropout(0.5),
-
             nn.Linear(classifier_hidden_dim, num_classes),
         )
 
     def forward(self, x):
         features = self.encoder(x)
         return self.classifier(features)
+
 
 @register_model("dual_encoder_cnn")
 class DualEncoderCNN(nn.Module):
@@ -180,23 +184,25 @@ class DualEncoderCNN(nn.Module):
 
         in_channels, H, W = input_shape
         if in_channels not in (1, 3):
-            raise ValueError("DualEncoderCNN attend 1 canal (raw) ou 3 canaux (radio/Chandra/masque)")
+            raise ValueError(
+                "DualEncoderCNN attend 1 canal (raw) ou 3 canaux (radio/Chandra/masque)"
+            )
 
         self.use_chandra = in_channels == 3
         self.use_mask = use_mask
         self.use_coverage = use_coverage and self.use_chandra
 
         # RAW uniquement
-        self.radio_encoder = ImageEncoder(
-            input_shape=(1, H, W)
-        )
+        self.radio_encoder = ImageEncoder(input_shape=(1, H, W))
 
         # CHANDRA + mask
         chandra_channels = 2 if use_mask else 1
 
-        self.chandra_encoder = ImageEncoder(
-            input_shape=(chandra_channels, H, W)
-        ) if self.use_chandra else None
+        self.chandra_encoder = (
+            ImageEncoder(input_shape=(chandra_channels, H, W))
+            if self.use_chandra
+            else None
+        )
 
         fusion_dim = self.radio_encoder.output_dim
         if self.use_chandra:
@@ -210,7 +216,6 @@ class DualEncoderCNN(nn.Module):
             nn.BatchNorm1d(fusion_hidden_dim),
             nn.LeakyReLU(0.2),
             nn.Dropout(0.5),
-
             nn.Linear(fusion_hidden_dim, num_classes),
         )
 
@@ -239,9 +244,7 @@ class DualEncoderCNN(nn.Module):
         else:
             chandra_input = chandra
 
-        chandra_features = self.chandra_encoder(
-            chandra_input
-        )
+        chandra_features = self.chandra_encoder(chandra_input)
 
         # Fraction de l'image couverte par Chandra
         coverage = mask.mean(dim=(2, 3))
@@ -250,9 +253,7 @@ class DualEncoderCNN(nn.Module):
         # pas de contribution du X-ray
         has_chandra = (coverage > 0).to(chandra_features.dtype)
 
-        chandra_features = (
-            chandra_features * has_chandra
-        )
+        chandra_features = chandra_features * has_chandra
 
         # -------------------------
         # Fusion
@@ -305,7 +306,7 @@ class DualSSNEncoder(nn.Module):
         if not isinstance(hidden_dim2, int) or hidden_dim2 < 1:
             raise ValueError("hidden_dim2 doit être un entier positif")
         channels, height, width = input_shape
-        if channels < 1 or min(height, width) < 2 ** J:
+        if channels < 1 or min(height, width) < 2**J:
             raise ValueError("input_shape requiert C >= 1 et H, W >= 2**J")
         try:
             from kymatio.torch import Scattering2D
@@ -314,23 +315,29 @@ class DualSSNEncoder(nn.Module):
                 "DualSSN nécessite kymatio : pip install 'clusterprep[scattering]'"
             ) from error
         self.input_shape = tuple(input_shape)
-        self.scattering = Scattering2D(J=J, shape=(height, width), L=L, max_order=max_order)
+        self.scattering = Scattering2D(
+            J=J, shape=(height, width), L=L, max_order=max_order
+        )
 
         def block(in_ch, out_ch, kernel=3, stride=1, dropout=0.2):
             return nn.Sequential(
                 nn.Conv2d(in_ch, out_ch, kernel, stride=stride, padding=kernel // 2),
-                nn.BatchNorm2d(out_ch), nn.LeakyReLU(0.2), nn.Dropout2d(dropout),
+                nn.BatchNorm2d(out_ch),
+                nn.LeakyReLU(0.2),
+                nn.Dropout2d(dropout),
             )
 
         self.cnn_encoder = nn.Sequential(
-            block(channels, 8, kernel=5), block(8, 16), nn.MaxPool2d(2),
+            block(channels, 8, kernel=5),
+            block(8, 16),
+            nn.MaxPool2d(2),
             block(16, 32, kernel=5, dropout=0.3),
         )
-        self.conv_to_latent_img = nn.Sequential(*[
-            block(32, 32, stride=2, dropout=0.4 if i == 3 else 0.3)
-            for i in range(4)
-        ])
+        self.conv_to_latent_img = nn.Sequential(
+            *[block(32, 32, stride=2, dropout=0.4 if i == 3 else 0.3) for i in range(4)]
+        )
         from kymatio.torch import Scattering2D
+
         temporary_scattering = Scattering2D(
             J=J,
             shape=(height, width),
@@ -355,12 +362,14 @@ class DualSSNEncoder(nn.Module):
             SEBlock(hidden_dim2),
         ]
         for i in range(5 - J):
-            scat_blocks.extend([
-                block(hidden_dim2, hidden_dim2, dropout=0.2 + i * 0.1),
-                SEBlock(hidden_dim2),
-                block(hidden_dim2, hidden_dim2, stride=2, dropout=0.2 + i * 0.1),
-                SEBlock(hidden_dim2),
-            ])
+            scat_blocks.extend(
+                [
+                    block(hidden_dim2, hidden_dim2, dropout=0.2 + i * 0.1),
+                    SEBlock(hidden_dim2),
+                    block(hidden_dim2, hidden_dim2, stride=2, dropout=0.2 + i * 0.1),
+                    SEBlock(hidden_dim2),
+                ]
+            )
         self.conv_to_latent_scat = nn.Sequential(*scat_blocks)
         # Aucun compteur ni statistique BatchNorm modifié à la construction.
         self.eval()
@@ -372,26 +381,18 @@ class DualSSNEncoder(nn.Module):
 
     def forward(self, x, scattering):
         if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
-            raise ValueError(
-                f"DualSSN attend [B, {self.input_shape}]"
-            )
+            raise ValueError(f"DualSSN attend [B, {self.input_shape}]")
         # branche CNN classique
-        img = self.conv_to_latent_img(
-            self.cnn_encoder(x)
-        ).flatten(1)
+        img = self.conv_to_latent_img(self.cnn_encoder(x)).flatten(1)
         # scattering déjà calculé :
         #
         # [B,C,K,Hs,Ws]
         #       ↓
         # [B,C*K,Hs,Ws]
         if scattering.ndim != 5:
-            raise ValueError(
-                "Scattering attendu sous forme [B,C,K,Hs,Ws]"
-            )
+            raise ValueError("Scattering attendu sous forme [B,C,K,Hs,Ws]")
         scat = scattering.flatten(1, 2)
-        scat = self.conv_to_latent_scat(
-            scat
-        ).flatten(1)
+        scat = self.conv_to_latent_scat(scat).flatten(1)
         return torch.cat(
             [img, scat],
             dim=1,
@@ -433,17 +434,19 @@ class DualSSN(nn.Module):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.encoder.output_dim, hidden_dim1), nn.BatchNorm1d(hidden_dim1),
-            nn.LeakyReLU(0.2), nn.Dropout(dropout_rate),
-            nn.Linear(hidden_dim1, classifier_hidden_dim), nn.BatchNorm1d(classifier_hidden_dim),
-            nn.LeakyReLU(0.2), nn.Dropout(dropout_rate),
+            nn.Linear(self.encoder.output_dim, hidden_dim1),
+            nn.BatchNorm1d(hidden_dim1),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_dim1, classifier_hidden_dim),
+            nn.BatchNorm1d(classifier_hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(dropout_rate),
             nn.Linear(classifier_hidden_dim, num_classes),
         )
 
     def forward(self, x, scattering):
-        return self.classifier(
-            self.encoder(x, scattering)
-        )
+        return self.classifier(self.encoder(x, scattering))
 
 
 @register_model("dual_encoder_ssn")
@@ -456,9 +459,19 @@ class DualEncoderSSN(nn.Module):
 
     uses_precomputed_scattering = True
 
-    def __init__(self, input_shape, num_classes=2, fusion_hidden_dim=64,
-                 hidden_dim2=16, use_mask=True, use_coverage=True,
-                 dropout_rate=0.5, J=2, L=8, max_order=2):
+    def __init__(
+        self,
+        input_shape,
+        num_classes=2,
+        fusion_hidden_dim=64,
+        hidden_dim2=16,
+        use_mask=True,
+        use_coverage=True,
+        dropout_rate=0.5,
+        J=2,
+        L=8,
+        max_order=2,
+    ):
         super().__init__()
         self.scattering_config = {
             "J": J,
@@ -467,32 +480,39 @@ class DualEncoderSSN(nn.Module):
         }
         channels, height, width = input_shape
         if channels not in (1, 3):
-            raise ValueError("DualEncoderSSN attend 1 canal (raw) ou 3 canaux (radio/Chandra/masque)")
+            raise ValueError(
+                "DualEncoderSSN attend 1 canal (raw) ou 3 canaux (radio/Chandra/masque)"
+            )
         self.input_shape = tuple(input_shape)
         self.use_chandra = channels == 3
         self.use_mask = use_mask
         self.use_coverage = use_coverage and self.use_chandra
-        self.radio_encoder = DualSSNEncoder((1, height, width), hidden_dim2, J, L, max_order)
+        self.radio_encoder = DualSSNEncoder(
+            (1, height, width), hidden_dim2, J, L, max_order
+        )
         self.chandra_encoder = (
-            DualSSNEncoder((2 if use_mask else 1, height, width), hidden_dim2, J, L, max_order)
-            if self.use_chandra else None
+            DualSSNEncoder(
+                (2 if use_mask else 1, height, width), hidden_dim2, J, L, max_order
+            )
+            if self.use_chandra
+            else None
         )
         fusion_dim = self.radio_encoder.output_dim
         if self.use_chandra:
             fusion_dim += self.chandra_encoder.output_dim
         fusion_dim += int(self.use_coverage)
         self.classifier = nn.Sequential(
-            nn.Linear(fusion_dim, fusion_hidden_dim), nn.BatchNorm1d(fusion_hidden_dim),
-            nn.LeakyReLU(0.2), nn.Dropout(dropout_rate),
+            nn.Linear(fusion_dim, fusion_hidden_dim),
+            nn.BatchNorm1d(fusion_hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(dropout_rate),
             nn.Linear(fusion_hidden_dim, num_classes),
         )
 
     def forward(self, x, scattering):
 
         if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
-            raise ValueError(
-                f"DualEncoderSSN attend [B, {self.input_shape}]"
-            )
+            raise ValueError(f"DualEncoderSSN attend [B, {self.input_shape}]")
 
         # scattering :
         # [B,C,K,Hs,Ws]
@@ -508,9 +528,7 @@ class DualEncoderSSN(nn.Module):
 
         if self.use_chandra:
 
-            coverage = x[:, 2:3].mean(
-                dim=(2, 3)
-            )
+            coverage = x[:, 2:3].mean(dim=(2, 3))
 
             if self.use_mask:
                 chandra = x[:, 1:3]
@@ -525,11 +543,8 @@ class DualEncoderSSN(nn.Module):
                 chandra_scattering,
             )
 
-            chandra_features = (
-                chandra_features
-                * (coverage > 0).to(
-                    chandra_features.dtype
-                )
+            chandra_features = chandra_features * (coverage > 0).to(
+                chandra_features.dtype
             )
 
             features.append(chandra_features)
@@ -537,14 +552,25 @@ class DualEncoderSSN(nn.Module):
             if self.use_coverage:
                 features.append(coverage)
 
-        return self.classifier(
-            torch.cat(features, dim=1)
-        )
+        return self.classifier(torch.cat(features, dim=1))
+
 
 def _list_models_with_scattering():
     """Noms de modèles utilisant le scattering, pour avertir sur mixup."""
-    return [name for name, (constructor, _) in _MODELS.items()
-            if getattr(constructor, "uses_precomputed_scattering", False)]
+    return [
+        name
+        for name, (constructor, _) in _MODELS.items()
+        if getattr(constructor, "uses_precomputed_scattering", False)
+    ]
+
+
+def output_names_for_task(task):
+    if task == "de_nde":
+        return ("DE", "NDE")
+    if task == "rr_rh":
+        return ("RR", "RH")
+    raise ValueError(f"Tâche inconnue : {task}")
+
 
 def build_model(config, num_classes, input_shape=None):
     """Construit un modèle enregistré ou importable via 'module:Constructeur'.
@@ -556,7 +582,9 @@ def build_model(config, num_classes, input_shape=None):
     if name in _MODELS:
         constructor, modes = _MODELS[name]
         if config.mode not in modes:
-            raise ValueError(f"{name} ne supporte pas le mode {config.mode} ; modes : {sorted(modes)}")
+            raise ValueError(
+                f"{name} ne supporte pas le mode {config.mode} ; modes : {sorted(modes)}"
+            )
     elif ":" in name:
         module, attribute = name.split(":", 1)
         try:
@@ -564,17 +592,27 @@ def build_model(config, num_classes, input_shape=None):
         except (ImportError, AttributeError) as error:
             raise ValueError(f"Impossible d'importer le modèle {name}") from error
     else:
-        raise ValueError(f"Modèle inconnu : {name}. Disponibles : {', '.join(list_models())}. "
-                         "Ou utiliser module:Constructeur.")
+        raise ValueError(
+            f"Modèle inconnu : {name}. Disponibles : {', '.join(list_models())}. "
+            "Ou utiliser module:Constructeur."
+        )
     expected_shape = (1 if config.mode == "raw" else 3, config.size, config.size)
     if input_shape is not None and tuple(input_shape) != expected_shape:
-        raise ValueError(f"input_shape doit correspondre aux données : {expected_shape}")
+        raise ValueError(
+            f"input_shape doit correspondre aux données : {expected_shape}"
+        )
     parameters = dict(getattr(config, "model_params", {}))
     if {"input_shape", "in_channels", "num_classes"} & parameters.keys():
-        raise ValueError("input_shape, in_channels et num_classes sont déduits des données")
+        raise ValueError(
+            "input_shape, in_channels et num_classes sont déduits des données"
+        )
     signature = inspect.signature(constructor)
-    automatic = {"input_shape": expected_shape, "in_channels": expected_shape[0],
-                 "num_classes": num_classes, "width": config.width}
+    automatic = {
+        "input_shape": expected_shape,
+        "in_channels": expected_shape[0],
+        "num_classes": num_classes,
+        "width": config.width,
+    }
     for key, value in automatic.items():
         if key in signature.parameters:
             parameters.setdefault(key, value)
