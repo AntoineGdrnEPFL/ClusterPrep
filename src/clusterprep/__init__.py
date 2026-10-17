@@ -46,3 +46,12 @@ __all__ += ["DualEncoderCNN", "multilabel_metrics"]
 
 from .metrics import select_multilabel_thresholds, resolve_thresholds
 __all__ += ["select_multilabel_thresholds", "resolve_thresholds"]
+
+from .transfer import (TransferConfig, TransferPhase, validate_transfer_modules,
+                       transfer_model_modules, load_pretrained_modules_from_state,
+                       read_checkpoint_state, configure_transfer_phase, set_transfer_train_mode)
+from .experiment_loader import resolve_transfer_splits
+__all__ += ["TransferConfig", "TransferPhase", "validate_transfer_modules",
+            "transfer_model_modules", "load_pretrained_modules_from_state",
+            "read_checkpoint_state", "configure_transfer_phase", "set_transfer_train_mode",
+            "resolve_transfer_splits"]

@@ -147,7 +147,7 @@ def build_scheduler(optimizer, config, steps_per_epoch):
         )
     return torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
-        max_lr=config.learning_rate * config.max_lr_factor,
+        max_lr=[g["lr"] * config.max_lr_factor for g in optimizer.param_groups],
         steps_per_epoch=steps_per_epoch,
         epochs=config.epochs,
         pct_start=config.warmup_fraction,

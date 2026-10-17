@@ -69,14 +69,20 @@ def main(argv=None):
     table = output / f"comparison-{runs[0].name}.csv"
     default_cohort = "paired" if any(c.mode == "pair" for c in configs) else "all"
     tables = []
-    if len({c.task for c in configs}) == 1:
+    cohort = spec.get("comparison_cohort", default_cohort)
+    populations = {}
+    for run, c in zip(runs, configs):
+        metrics = json.loads((run / "metrics.json").read_text())
+        identity = metrics["test_cohorts"][cohort]["cohort_id"]
+        populations.setdefault((c.task, identity), []).append(run)
+    if len(populations) == 1:
         compare_experiments(runs, table, cohort=spec.get("comparison_cohort", default_cohort))
         tables.append(table)
     else:
-        for task in sorted({c.task for c in configs}):
-            task_table = table.with_name(table.stem + "-" + task + ".csv")
+        for index, ((task, _), population) in enumerate(populations.items(), 1):
+            task_table = table.with_name(table.stem + f"-{task}-{index}.csv")
             tables.append(task_table)
-            compare_experiments([run for run, c in zip(runs, configs) if c.task == task],
+            compare_experiments(population,
                 task_table,
                 cohort=spec.get("comparison_cohort", default_cohort))
         table = None

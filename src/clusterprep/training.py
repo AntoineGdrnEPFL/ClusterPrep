@@ -19,8 +19,12 @@ from torch import nn
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 from .dataset import ClusterDataset
 from .io import CLASS_NAMES
-from .metrics import (classification_metrics, multilabel_metrics, resolve_thresholds,
-                      select_multilabel_thresholds)
+from .metrics import (
+    classification_metrics,
+    multilabel_metrics,
+    resolve_thresholds,
+    select_multilabel_thresholds,
+)
 from .models import build_model, _list_models_with_scattering
 from .splits import split_data_keys, split_distribution
 from .processed import prepare_processed
@@ -37,6 +41,17 @@ from .training_core import (
     move_batch_to_device,
     forward_model,
 )
+from .transfer import (
+    TransferConfig,
+    TransferPhase,
+    load_pretrained_modules_from_state,
+    read_checkpoint_state,
+    configure_transfer_phase,
+    set_transfer_train_mode,
+    validate_transfer_plan,
+    prepare_transfer_source,
+)
+from .experiment_loader import resolve_transfer_splits, audit_transfer_splits
 
 
 @dataclass(frozen=True)
@@ -49,7 +64,10 @@ class ExperimentConfig(TrainingConfig):
     thresholds: dict = field(default_factory=lambda: {"RR": 0.5, "RH": 0.5})
     threshold_selection: str = "fixed"
     threshold_min_precision: float = 0.8
-    threshold_grid: list = field(default_factory=lambda: [i / 100 for i in range(5, 100, 5)])
+    threshold_grid: list = field(
+        default_factory=lambda: [i / 100 for i in range(5, 100, 5)]
+    )
+    transfer: TransferConfig | None = None
     seed: int = 42
     size: int = 128
     width: int = 16
@@ -66,15 +84,32 @@ class ExperimentConfig(TrainingConfig):
 
     def __post_init__(self):
         super().__post_init__()
+        if isinstance(self.transfer, dict):
+            object.__setattr__(self, "transfer", TransferConfig(**self.transfer))
+        if self.transfer is not None:
+            if not isinstance(self.transfer, TransferConfig):
+                raise TypeError("transfer must be a TransferConfig or dictionary")
+            self.transfer.__post_init__()
+            if self.task != "rr_rh":
+                raise ValueError("Transfer learning requires task='rr_rh'")
         resolve_thresholds(self.thresholds)
         if self.threshold_selection not in {"fixed", "f1", "recall_at_precision"}:
             raise ValueError("threshold_selection : fixed, f1 ou recall_at_precision")
         if self.task == "de_nde" and self.threshold_selection != "fixed":
             raise ValueError("La sélection de seuils est réservée à rr_rh")
-        if not np.isfinite(self.threshold_min_precision) or not 0 <= self.threshold_min_precision <= 1:
+        if (
+            not np.isfinite(self.threshold_min_precision)
+            or not 0 <= self.threshold_min_precision <= 1
+        ):
             raise ValueError("threshold_min_precision doit être entre 0 et 1")
-        if not isinstance(self.threshold_grid, (list, tuple)) or not self.threshold_grid or any(
-                not isinstance(v, (int, float)) or not np.isfinite(v) or not 0 < v < 1 for v in self.threshold_grid):
+        if (
+            not isinstance(self.threshold_grid, (list, tuple))
+            or not self.threshold_grid
+            or any(
+                not isinstance(v, (int, float)) or not np.isfinite(v) or not 0 < v < 1
+                for v in self.threshold_grid
+            )
+        ):
             raise ValueError("threshold_grid : liste non vide de nombres entre 0 et 1")
         if not isinstance(self.model_params, dict) or not all(
             isinstance(k, str) for k in self.model_params
@@ -154,7 +189,9 @@ def _seed_worker(worker_id):
     np.random.seed(seed)
 
 
-def _validate_splits(info, splits, class_names, task="de_nde", candidate_policy="positive"):
+def _validate_splits(
+    info, splits, class_names, task="de_nde", candidate_policy="positive"
+):
     if len(class_names) < 2 or len(set(class_names)) != len(class_names):
         raise ValueError("Au moins deux classes distinctes requises")
     if len(splits) != 3:
@@ -167,7 +204,9 @@ def _validate_splits(info, splits, class_names, task="de_nde", candidate_policy=
         for key in keys:
             task_target(info[key], task, candidate_policy, class_names)
             if info[key]["cluster_id"] in clusters:
-                raise ValueError("Cluster dupliqué dans un split : dédupliquer les observations")
+                raise ValueError(
+                    "Cluster dupliqué dans un split : dédupliquer les observations"
+                )
             clusters.add(info[key]["cluster_id"])
         if seen & clusters:
             raise ValueError("Fuite de clusters entre les splits")
@@ -219,16 +258,21 @@ def _epoch(
     criterion=None,
     scheduler=None,
     input_adapter=None,
+    frozen_modules=(),
 ):
     training = optimizer is not None
     model.train(training)
+    if training and frozen_modules:
+        set_transfer_train_mode(model, frozen_modules)
     labels, probabilities, predictions, masks = [], [], [], []
     loss_denominator = 0.0
     task = getattr(config, "task", "de_nde")
     total_loss, count = 0.0, 0
-    criterion = criterion or (nn.BCEWithLogitsLoss() if task == "rr_rh" else nn.CrossEntropyLoss(
-        weight=weights, label_smoothing=config.label_smoothing
-    ))
+    criterion = criterion or (
+        nn.BCEWithLogitsLoss()
+        if task == "rr_rh"
+        else nn.CrossEntropyLoss(weight=weights, label_smoothing=config.label_smoothing)
+    )
     with (
         torch.enable_grad() if training else torch.inference_mode(),
         progress(
@@ -242,7 +286,10 @@ def _epoch(
             target = batch["label"]
             if task == "rr_rh":
                 observed = batch.get("label_mask", torch.ones_like(target))
-                if observed.shape != target.shape or not ((observed == 0) | (observed == 1)).all():
+                if (
+                    observed.shape != target.shape
+                    or not ((observed == 0) | (observed == 1)).all()
+                ):
                     raise ValueError("Masque de labels binaire [B, 2] requis")
                 target = torch.where(observed.bool(), target, torch.zeros_like(target))
             if training:
@@ -261,12 +308,19 @@ def _epoch(
                 raise ValueError("MixUp incompatible avec scattering précalculé")
             if mixed:
                 if task == "rr_rh":
-                    packed = torch.stack((target, batch.get("label_mask", torch.ones_like(target))), dim=1)
-                    inputs, packed_a, packed_b, lam = mixup_batch(inputs, packed, config.mixup_alpha)
+                    packed = torch.stack(
+                        (target, batch.get("label_mask", torch.ones_like(target))),
+                        dim=1,
+                    )
+                    inputs, packed_a, packed_b, lam = mixup_batch(
+                        inputs, packed, config.mixup_alpha
+                    )
                     target_a, mask_a = packed_a.unbind(1)
                     target_b, mask_b = packed_b.unbind(1)
                 else:
-                    inputs, target_a, target_b, lam = mixup_batch(inputs, target, config.mixup_alpha)
+                    inputs, target_a, target_b, lam = mixup_batch(
+                        inputs, target, config.mixup_alpha
+                    )
             logits = forward_model(model, inputs)
             if (
                 logits.shape != (len(target), len(class_names))
@@ -283,7 +337,10 @@ def _epoch(
                     )
                 if target.dtype != torch.float32:
                     raise TypeError("Les cibles RR/RH doivent être float32")
-                if not torch.isfinite(target).all() or not ((target == 0) | (target == 1)).all():
+                if (
+                    not torch.isfinite(target).all()
+                    or not ((target == 0) | (target == 1)).all()
+                ):
                     raise ValueError("Targets binaires finis requis")
             # CE simple conservée séparément pour les comparaisons de cohortes.
             if getattr(config, "task", "de_nde") == "de_nde":
@@ -302,17 +359,24 @@ def _epoch(
                 mask = batch.get("label_mask", torch.ones_like(target))
                 if mask.shape != target.shape or not ((mask == 0) | (mask == 1)).all():
                     raise ValueError("Masque de labels binaire [B, 2] requis")
-                elements = nn.functional.binary_cross_entropy_with_logits(logits, target, reduction="none")
+                elements = nn.functional.binary_cross_entropy_with_logits(
+                    logits, target, reduction="none"
+                )
                 losses = (elements * mask).sum(1) / mask.sum(1).clamp_min(1)
+
                 def masked_loss(y, m):
                     values = nn.functional.binary_cross_entropy_with_logits(
-                        logits, y, pos_weight=criterion.pos_weight, reduction="none")
+                        logits, y, pos_weight=criterion.pos_weight, reduction="none"
+                    )
                     return (values * m).sum(), m.sum()
+
                 if mixed:
                     numerator_a, denominator_a = masked_loss(target_a, mask_a)
                     numerator_b, denominator_b = masked_loss(target_b, mask_b)
-                    denominator = lam * denominator_a + (1-lam) * denominator_b
-                    loss = (lam * numerator_a + (1-lam) * numerator_b) / denominator.clamp_min(1)
+                    denominator = lam * denominator_a + (1 - lam) * denominator_b
+                    loss = (
+                        lam * numerator_a + (1 - lam) * numerator_b
+                    ) / denominator.clamp_min(1)
                 else:
                     numerator, denominator = masked_loss(target, mask)
                     loss = numerator / denominator.clamp_min(1)
@@ -339,14 +403,19 @@ def _epoch(
             truth = target.cpu().numpy()
             if task == "rr_rh":
                 batch_denominator = float(denominator)
-            elif isinstance(criterion, nn.CrossEntropyLoss) and criterion.weight is not None:
+            elif (
+                isinstance(criterion, nn.CrossEntropyLoss)
+                and criterion.weight is not None
+            ):
                 batch_denominator = float(criterion.weight[target].sum())
             else:
                 batch_denominator = len(target)
             total_loss += loss.item() * batch_denominator
             loss_denominator += batch_denominator
             count += len(target)
-            bar.set_postfix(loss=f"{total_loss / max(loss_denominator, 1):.4f}", refresh=False)
+            bar.set_postfix(
+                loss=f"{total_loss / max(loss_denominator, 1):.4f}", refresh=False
+            )
             labels.extend(truth.tolist())
             probabilities.extend(proba.tolist())
             if not training:
@@ -357,7 +426,20 @@ def _epoch(
                         predicted_label = int(proba[i].argmax())
                     elif getattr(config, "task", "de_nde") == "rr_rh":
                         true_label = truth[i].astype(int).tolist()
-                        predicted_label = (proba[i] >= np.array(list(resolve_thresholds(config.thresholds, class_names).values()))).astype(int).tolist()
+                        predicted_label = (
+                            (
+                                proba[i]
+                                >= np.array(
+                                    list(
+                                        resolve_thresholds(
+                                            config.thresholds, class_names
+                                        ).values()
+                                    )
+                                )
+                            )
+                            .astype(int)
+                            .tolist()
+                        )
                     else:
                         raise ValueError(f"Tâche inconnue : {config.task}")
                     predictions.append(
@@ -369,7 +451,9 @@ def _epoch(
                                 i
                             ],
                             "label": true_label,
-                            "label_mask": mask[i].cpu().tolist() if task == "rr_rh" else None,
+                            "label_mask": (
+                                mask[i].cpu().tolist() if task == "rr_rh" else None
+                            ),
                             "prediction": predicted_label,
                             "has_chandra": bool(
                                 batch.get("has_chandra", [False] * len(target))[i]
@@ -402,6 +486,39 @@ def _epoch(
     return metrics, predictions
 
 
+def _record_history(run_dir, record):
+    """Shared scalar CSV and full JSONL logs for normal and phased training."""
+    with (run_dir / "history.jsonl").open("a") as stream:
+        stream.write(json.dumps(record, allow_nan=False) + "\n")
+    flat = {k: record[k] for k in ("epoch", "seconds", "learning_rate")}
+    for key in ("phase", "phase_epoch"):
+        if key in record:
+            flat[key] = record[key]
+    for prefix, metrics in (("train", record["train"]), ("val", record["validation"])):
+        flat.update(
+            {
+                f"{prefix}_{k}": v
+                for k, v in metrics.items()
+                if not isinstance(v, (dict, list))
+            }
+        )
+        for label, scores in metrics.get("per_label", {}).items():
+            flat.update(
+                {
+                    f"{prefix}_{label}_{k}": v
+                    for k, v in scores.items()
+                    if not isinstance(v, (dict, list))
+                }
+            )
+    path = run_dir / "history.csv"
+    new = not path.exists()
+    with path.open("a", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(flat))
+        if new:
+            writer.writeheader()
+        writer.writerow(flat)
+
+
 class Trainer:
     """Moteur générique ; input_adapter(batch) sélectionne les entrées du modèle.
 
@@ -426,8 +543,18 @@ class Trainer:
         self.config, self.class_names, self.device = config, tuple(class_names), device
         self.input_adapter = input_adapter
         self.criterion = build_criterion(config, class_counts, device, n_train=n_train)
-        self.optimizer = build_optimizer(model, config)
-        self.scheduler = build_scheduler(self.optimizer, config, steps_per_epoch)
+        self.steps_per_epoch = steps_per_epoch
+        self.frozen_modules = []
+        self.optimizer = (
+            None
+            if getattr(config, "transfer", None)
+            else build_optimizer(model, config)
+        )
+        self.scheduler = (
+            build_scheduler(self.optimizer, config, steps_per_epoch)
+            if self.optimizer
+            else None
+        )
         monitor = getattr(config, "monitor", "val_loss")
         self.stopping = EarlyStopping(
             config.patience,
@@ -438,6 +565,10 @@ class Trainer:
         self.stopped_early = False
 
     def train_one_epoch(self, loader, description=None):
+        if self.optimizer is None:
+            raise RuntimeError(
+                "Transfer optimizer is not configured; call fit_transfer()"
+            )
         return _epoch(
             self.model,
             loader,
@@ -449,6 +580,7 @@ class Trainer:
             scheduler=self.scheduler,
             input_adapter=self.input_adapter,
             description=description,
+            frozen_modules=self.frozen_modules,
         )
 
     def evaluate(self, loader, description=None):
@@ -463,25 +595,191 @@ class Trainer:
             description=description,
         )
 
-    def fit(self, train_loader, val_loader):
+    def fit(self, train_loader, val_loader, *, run_dir=None, phase=None):
         """Entraîne puis restaure le meilleur modèle, même sans arrêt anticipé.
 
         Créer un Trainer et un modèle neufs pour chaque expérience.
         """
         history = []
+        if run_dir is not None:
+            run_dir = Path(run_dir)
+            run_dir.mkdir(parents=True, exist_ok=True)
         for epoch in range(1, self.config.epochs + 1):
-            train, _ = self.train_one_epoch(train_loader)
-            validation, _ = self.evaluate(val_loader)
-            history.append({"epoch": epoch, "train": train, "validation": validation})
+            started = time.perf_counter()
+            if run_dir is None:
+                train, _ = self.train_one_epoch(train_loader)
+                validation, _ = self.evaluate(val_loader)
+            else:
+                train, _ = self.train_one_epoch(
+                    train_loader, f"Époque {epoch}/{self.config.epochs} · train"
+                )
+                validation, _ = self.evaluate(
+                    val_loader, f"Époque {epoch}/{self.config.epochs} · validation"
+                )
+            record = {
+                "epoch": epoch,
+                "seconds": time.perf_counter() - started,
+                "learning_rate": self.optimizer.param_groups[0]["lr"],
+                "train": train,
+                "validation": validation,
+            }
+            if phase is not None:
+                record.update(
+                    phase=phase,
+                    phase_epoch=epoch,
+                    learning_rates={
+                        g["name"]: g["lr"] for g in self.optimizer.param_groups
+                    },
+                )
+            history.append(record)
+            if run_dir is not None:
+                _record_history(run_dir, record)
             key = getattr(self.config, "monitor", "val_loss").removeprefix("val_")
+            if validation[key] is None:
+                raise ValueError(f"Métrique val_{key} non définie ; utiliser val_loss")
             improved, stop = self.stopping.update(validation[key], self.model)
             if improved:
                 self.best_epoch = epoch
+                if run_dir is not None:
+                    torch.save(self._checkpoint(epoch, phase), run_dir / "best.pt")
+            if getattr(self.config, "verbose", False):
+                message(
+                    f"Époque {epoch:03d}/{self.config.epochs} | loss train={train['loss']:.4f} "
+                    f"val={validation['loss']:.4f} | F1 val={validation.get('macro_f1', 0.):.3f} | "
+                    f"{'checkpoint enregistré' if improved else f'patience {self.stopping.bad_epochs}/{self.config.patience}'} "
+                    f"| {record['seconds']:.1f} s",
+                    True,
+                )
             if stop and self.config.use_early_stopping:
                 self.stopped_early = True
+                message("Arrêt anticipé.", getattr(self.config, "verbose", False))
                 break
         self.stopping.restore(self.model)
         return history
+
+    def _checkpoint(self, epoch, phase=None):
+        return {
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": (
+                self.scheduler.state_dict() if self.scheduler else None
+            ),
+            "config": asdict(self.config),
+            "class_names": list(self.class_names),
+            "epoch": epoch,
+            "monitor": getattr(self.config, "monitor", "val_loss"),
+            "score": self.stopping.best,
+            "phase": phase,
+        }
+
+    def fit_transfer(self, train_loader, val_loader, *, run_dir=None, phases=None):
+        """Train phases through fit(), restoring each best before the next phase.
+
+        Final selection compares phase bests on validation only. Test loaders
+        are deliberately absent from this API.
+        """
+        original = self.config
+        transfer = getattr(original, "transfer", None)
+        if transfer is None:
+            raise ValueError("fit_transfer requires config.transfer")
+        if phases is not None:
+            transfer = replace(transfer, phases=phases)
+        modules = validate_transfer_plan(self.model, transfer)
+        if len(train_loader) < 1:
+            raise ValueError("No training batches")
+        if original.use_scheduler and any(
+            original.warmup_fraction * p.epochs * len(train_loader) == 1
+            for p in transfer.phases
+        ):
+            raise ValueError(
+                "OneCycleLR: warmup_fraction * total_steps must not equal 1 in any phase"
+            )
+        history, reports = [], []
+        best_score = None
+        selected_state = None
+        selected_stopping = None
+        selected_epoch = 0
+        selected_phase = None
+        any_stopped = False
+        run_dir = Path(run_dir) if run_dir is not None else None
+        monitor = getattr(original, "monitor", "val_loss")
+        try:
+            for phase in transfer.phases:
+                self.config = replace(
+                    original,
+                    epochs=phase.epochs,
+                    patience=phase.patience,
+                    weight_decay=phase.weight_decay,
+                )
+                self.optimizer, self.frozen_modules = configure_transfer_phase(
+                    self.model, phase
+                )
+                self.scheduler = build_scheduler(
+                    self.optimizer, self.config, len(train_loader)
+                )
+                self.stopping = EarlyStopping(
+                    phase.patience,
+                    getattr(original, "min_delta", 0.0),
+                    "min" if monitor == "val_loss" else "max",
+                )
+                self.best_epoch, self.stopped_early = 0, False
+                phase_dir = run_dir / "phases" / phase.name if run_dir else None
+                offset = len(history)
+                records = self.fit(
+                    train_loader, val_loader, run_dir=phase_dir, phase=phase.name
+                )
+                phase_report = {
+                    **asdict(phase),
+                    "trainable_groups": list(phase.learning_rates),
+                    "frozen_groups": sorted(set(modules) - set(phase.learning_rates)),
+                    "epochs_ran": len(records),
+                    "best_epoch": self.best_epoch,
+                    "global_best_epoch": offset + self.best_epoch,
+                    "monitor": monitor,
+                    "monitor_best": self.stopping.best,
+                    "stopped_early": self.stopped_early,
+                    "validation": records[self.best_epoch - 1]["validation"],
+                }
+                reports.append(phase_report)
+                if phase_dir:
+                    _json(phase_dir / "metrics.json", phase_report)
+                for record in records:
+                    global_record = {**record, "epoch": offset + record["epoch"]}
+                    history.append(global_record)
+                    if run_dir:
+                        _record_history(run_dir, global_record)
+                score = self.stopping.best
+                better = best_score is None or (
+                    score < best_score if monitor == "val_loss" else score > best_score
+                )
+                if better:
+                    best_score, selected_phase = score, phase.name
+                    selected_epoch = offset + self.best_epoch
+                    selected_stopping = self.stopping
+                    selected_state = self.stopping.best_state_dict
+                    if run_dir:
+                        checkpoint = torch.load(
+                            phase_dir / "best.pt", map_location="cpu", weights_only=True
+                        )
+                        checkpoint.update(
+                            config=asdict(original),
+                            phase_epoch=self.best_epoch,
+                            epoch=selected_epoch,
+                        )
+                        torch.save(checkpoint, run_dir / "best.pt")
+                any_stopped |= self.stopped_early
+            self.model.load_state_dict(selected_state)
+            self.stopping = selected_stopping
+            self.best_epoch, self.stopped_early = selected_epoch, any_stopped
+            self.transfer_report = {
+                "phases": reports,
+                "selected_phase": selected_phase,
+                "selection": monitor,
+                "epochs_ran": len(history),
+            }
+            return history
+        finally:
+            self.config = original
 
     def predict(self, loader):
         """Probabilités CPU, dans l'ordre du loader ; labels non nécessaires."""
@@ -545,7 +843,11 @@ def _cohort(
         raise ValueError(f"Tâche inconnue : {task}")
     if task == "rr_rh":
         known = [sum(p.get("label_mask", [1, 1])) for p in ordered]
-        metrics["loss"] = float(np.average([p["loss"] for p in ordered], weights=known)) if sum(known) else None
+        metrics["loss"] = (
+            float(np.average([p["loss"] for p in ordered], weights=known))
+            if sum(known)
+            else None
+        )
     else:
         metrics["loss"] = float(np.mean([p["loss"] for p in ordered]))
     identity = {
@@ -604,7 +906,13 @@ def _write_predictions(
     elif task == "rr_rh":
         label_fields = [f"label_{name}" for name in class_names]
         prediction_fields = [f"prediction_{name}" for name in class_names]
-        fields = base_fields + label_fields + prediction_fields + probability_fields + [f"known_{name}" for name in class_names]
+        fields = (
+            base_fields
+            + label_fields
+            + prediction_fields
+            + probability_fields
+            + [f"known_{name}" for name in class_names]
+        )
     else:
         raise ValueError(f"Tâche inconnue : {task}")
     with Path(path).open("w", newline="") as stream:
@@ -635,7 +943,10 @@ def _unique_cluster_splits(info, splits):
         chosen = {}
         for key in keys:
             cid = info[key]["cluster_id"]
-            if cid not in chosen or (info[key].get("chandra_path") and not info[chosen[cid]].get("chandra_path")):
+            if cid not in chosen or (
+                info[key].get("chandra_path")
+                and not info[chosen[cid]].get("chandra_path")
+            ):
                 chosen[cid] = key
         result.append(list(chosen.values()))
     return tuple(result)
@@ -663,17 +974,52 @@ def run_experiment(
     class_names = ("RR", "RH") if config.task == "rr_rh" else tuple(class_names)
     if config.task == "de_nde" and set(class_names) != {"DE", "NDE"}:
         class_names = CLASS_NAMES
+    transfer_splits_report = None
+    if config.transfer is not None and config.transfer.reuse_splits:
+        resolved, transfer_splits_report = resolve_transfer_splits(
+            config.transfer.source_experiment,
+            data_info,
+            task=config.task,
+            mode=config.mode,
+            candidate_policy=config.candidate_policy,
+            allow_subset=config.transfer.allow_subset,
+            add_new_clusters=config.transfer.add_new_clusters,
+            seed=config.transfer.seed,
+        )
+        if splits is not None and tuple(map(set, splits)) != tuple(map(set, resolved)):
+            raise ValueError("Explicit splits conflict with source transfer splits")
+        splits = resolved
     if splits is None:
-        splits = split_data_keys(data_info, mode=(config.mode if config.task == "rr_rh" else "raw"), task=config.task, candidate_policy=config.candidate_policy, seed=config.seed)
+        splits = split_data_keys(
+            data_info,
+            mode=(config.mode if config.task == "rr_rh" else "raw"),
+            task=config.task,
+            candidate_policy=config.candidate_policy,
+            seed=config.seed,
+        )
         splits = _unique_cluster_splits(data_info, splits)
     splits = tuple(list(keys) for keys in splits)
-    _validate_splits(data_info, splits, class_names, config.task, config.candidate_policy)
+    _validate_splits(
+        data_info, splits, class_names, config.task, config.candidate_policy
+    )
+    if config.transfer is not None:
+        audit = audit_transfer_splits(
+            config.transfer.source_experiment, data_info, splits
+        )
+        transfer_splits_report = transfer_splits_report or {
+            "split_policy": "explicit_or_generated"
+        }
+        transfer_splits_report["leakage_audit"] = audit
+        for warning in audit["warnings"]:
+            warnings.warn(warning, UserWarning)
     base_splits = splits
     if config.mode == "pair":
         splits = tuple(
             [k for k in keys if data_info[k].get("chandra_path")] for keys in splits
         )
-    _validate_splits(data_info, splits, class_names, config.task, config.candidate_policy)
+    _validate_splits(
+        data_info, splits, class_names, config.task, config.candidate_policy
+    )
     class_counts = compute_task_counts(
         data_info,
         splits[0],
@@ -687,7 +1033,12 @@ def run_experiment(
             "Chaque classe doit être présente dans l'entraînement après filtrage"
         )
     if getattr(config, "task", "de_nde") == "rr_rh":
-        n_train = np.asarray([task_target(data_info[k], config.task, config.candidate_policy)[1] for k in splits[0]]).sum(0)
+        n_train = np.asarray(
+            [
+                task_target(data_info[k], config.task, config.candidate_policy)[1]
+                for k in splits[0]
+            ]
+        ).sum(0)
         if any(count >= total for count, total in zip(class_counts, n_train)):
             raise ValueError(
                 "Chaque label doit également avoir " "au moins un exemple négatif"
@@ -711,6 +1062,7 @@ def run_experiment(
             model_factory or build_model,
             input_adapter,
             split_metadata,
+            transfer_splits_report,
         )
     except Exception as error:
         _json(run_dir / "status.json", {"status": "failed", "error": str(error)})
@@ -728,6 +1080,7 @@ def _run(
     factory,
     input_adapter=None,
     split_metadata=None,
+    transfer_splits_report=None,
 ):
     started = time.perf_counter()
     random.seed(config.seed)
@@ -740,6 +1093,12 @@ def _run(
         config,
         len(output_names),
     ).to(device)
+    transfer_report = None
+    if config.transfer is not None:
+        transfer_report = prepare_transfer_source(model, config, factory)
+        transfer_report["split_provenance"] = transfer_splits_report
+        _json(run_dir / "transfer.json", transfer_report)
+        _json(run_dir / "transfer_splits_report.json", transfer_splits_report)
 
     needs_multiple = any(
         isinstance(layer, nn.modules.batchnorm._BatchNorm) for layer in model.modules()
@@ -749,12 +1108,17 @@ def _run(
         raise ValueError(
             "Un modèle avec BatchNorm requiert batch_size >= 2 et au moins deux exemples train"
         )
+    epoch_budget = (
+        sum(p.epochs for p in config.transfer.phases)
+        if config.transfer
+        else config.epochs
+    )
     message(
         f"\n{config.name} | mode={config.mode}, modèle={config.model}, device={device}, "
         f"seed={config.seed}\n"
         f"Train/validation/test : {'/'.join(str(len(k)) for k in splits)} amas ; "
         f"augmentation={'24 variantes' if config.augment else 'non'} ; "
-        f"{config.epochs} époques maximum, early stopping={config.monitor} "
+        f"{epoch_budget} époques maximum, early stopping={config.monitor} "
         f"(patience={config.patience}).\nRésultats : {run_dir}",
         config.verbose,
     )
@@ -853,10 +1217,17 @@ def _run(
         device=device,
         steps_per_epoch=len(loaders[0]),
         input_adapter=input_adapter,
-        n_train=(np.asarray([task_target(info[k], config.task, config.candidate_policy)[1] for k in splits[0]]).sum(0)
-                 if config.task == "rr_rh" else len(splits[0])),
+        n_train=(
+            np.asarray(
+                [
+                    task_target(info[k], config.task, config.candidate_policy)[1]
+                    for k in splits[0]
+                ]
+            ).sum(0)
+            if config.task == "rr_rh"
+            else len(splits[0])
+        ),
     )
-    optimizer = trainer.optimizer
     metadata = {
         "schema_version": 2,
         "config": asdict(config),
@@ -909,86 +1280,18 @@ def _run(
     sources = {k: _source_signature(info[k]) for keys in base_splits for k in keys}
     split_manifest["source_signatures"] = sources
     _json(run_dir / "splits.json", split_manifest)
-    _json(run_dir / "split_distribution.json", split_distribution(info, splits, config.task, config.candidate_policy))
-    stopping = trainer.stopping
-    history, best_epoch, stopped = [], 0, False
-    history_path = run_dir / "history.csv"
-    for epoch in range(1, config.epochs + 1):
-        epoch_start = time.perf_counter()
-        train_metrics, _ = trainer.train_one_epoch(
-            loaders[0], description=f"Époque {epoch}/{config.epochs} · train"
-        )
-        val_metrics, _ = trainer.evaluate(
-            loaders[1], description=f"Époque {epoch}/{config.epochs} · validation"
-        )
-        record = {
-            "epoch": epoch,
-            "seconds": time.perf_counter() - epoch_start,
-            "learning_rate": optimizer.param_groups[0]["lr"],
-            "train": train_metrics,
-            "validation": val_metrics,
-        }
-        history.append(record)
-        with (run_dir / "history.jsonl").open("a") as stream:
-            stream.write(json.dumps(record, allow_nan=False) + "\n")
-        flat = {
-            "epoch": epoch,
-            "seconds": record["seconds"],
-            "learning_rate": record["learning_rate"],
-        }
-        for prefix, metrics in (("train", train_metrics), ("val", val_metrics)):
-            flat.update(
-                {
-                    f"{prefix}_{key}": value
-                    for key, value in metrics.items()
-                    if not isinstance(value, (dict, list))
-                }
-            )
-            for label, scores in metrics.get("per_label", {}).items():
-                flat.update({f"{prefix}_{label}_{key}": value for key, value in scores.items()
-                             if not isinstance(value, (dict, list))})
-        with history_path.open("a", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=list(flat))
-            if epoch == 1:
-                writer.writeheader()
-            writer.writerow(flat)
-        score = val_metrics[config.monitor.removeprefix("val_")]
-        if score is None:
-            raise ValueError(f"Métrique {config.monitor} non définie dans la validation ; utiliser val_loss")
-        improved, stopped = stopping.step(score, model)
-        stopped = stopped and config.use_early_stopping
-        if improved:
-            best_epoch = epoch
-            torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "scheduler_state_dict": (
-                        trainer.scheduler.state_dict() if trainer.scheduler else None
-                    ),
-                    "config": asdict(config),
-                    "class_names": list(class_names),
-                    "epoch": epoch,
-                    "monitor": config.monitor,
-                    "score": stopping.best,
-                },
-                run_dir / "best.pt",
-            )
-        message(
-            f"Époque {epoch:03d}/{config.epochs} | loss train={train_metrics['loss']:.4f} "
-            f"val={val_metrics['loss']:.4f} | F1 val={val_metrics['macro_f1']:.3f} | "
-            f"{'checkpoint enregistré' if improved else f'patience {stopping.bad_epochs}/{config.patience}'} "
-            f"| {record['seconds']:.1f} s",
-            config.verbose,
-        )
-        if stopped:
-            message("Arrêt anticipé.", config.verbose)
-            break
-    message(
-        f"Restauration du checkpoint époque {best_epoch} ; évaluation finale.",
-        config.verbose,
+    _json(
+        run_dir / "split_distribution.json",
+        split_distribution(info, splits, config.task, config.candidate_policy),
     )
-    stopping.restore(model)
+    if config.transfer is not None:
+        history = trainer.fit_transfer(loaders[0], loaders[1], run_dir=run_dir)
+        transfer_report.update(trainer.transfer_report)
+        _json(run_dir / "transfer.json", transfer_report)
+    else:
+        history = trainer.fit(loaders[0], loaders[1], run_dir=run_dir)
+    stopping = trainer.stopping
+    best_epoch, stopped = trainer.best_epoch, trainer.stopped_early
     val_metrics, val_predictions = trainer.evaluate(
         loaders[1], description="Validation finale"
     )
@@ -998,24 +1301,37 @@ def _run(
             [p["label"] for p in val_predictions],
             [p["probabilities"] for p in val_predictions],
             target_mask=[p["label_mask"] for p in val_predictions],
-            method=config.threshold_selection, grid=config.threshold_grid,
-            min_precision=config.threshold_min_precision, fallback=config.thresholds,
+            method=config.threshold_selection,
+            grid=config.threshold_grid,
+            min_precision=config.threshold_min_precision,
+            fallback=config.thresholds,
         )
         chosen = threshold_selection["thresholds"]
         config = replace(config, thresholds=chosen)
         trainer.config = config
         validation_loss = val_metrics["loss"]
         val_metrics = multilabel_metrics(
-            [p["label"] for p in val_predictions], [p["probabilities"] for p in val_predictions],
-            target_mask=[p["label_mask"] for p in val_predictions], thresholds=chosen)
+            [p["label"] for p in val_predictions],
+            [p["probabilities"] for p in val_predictions],
+            target_mask=[p["label_mask"] for p in val_predictions],
+            thresholds=chosen,
+        )
         val_metrics["loss"] = validation_loss
         for prediction in val_predictions:
-            prediction["prediction"] = (np.asarray(prediction["probabilities"]) >=
-                                         np.array(list(chosen.values()))).astype(int).tolist()
+            prediction["prediction"] = (
+                (
+                    np.asarray(prediction["probabilities"])
+                    >= np.array(list(chosen.values()))
+                )
+                .astype(int)
+                .tolist()
+            )
         _json(run_dir / "thresholds.json", threshold_selection)
         metadata["evaluation"] = threshold_selection
         _json(run_dir / "config.json", metadata)
-        checkpoint = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
+        checkpoint = torch.load(
+            run_dir / "best.pt", map_location="cpu", weights_only=True
+        )
         checkpoint["evaluation"] = threshold_selection
         torch.save(checkpoint, run_dir / "best.pt")
     test_metrics, test_predictions = trainer.evaluate(
@@ -1047,8 +1363,14 @@ def _run(
         "split_counts": dict(zip(("train", "validation", "test"), map(len, splits))),
         "validation": val_metrics,
         "test": test_metrics,
-        **({"threshold_selection": threshold_selection,
-            "annotation_convention": "unannotated_negative"} if config.task == "rr_rh" else {}),
+        **(
+            {
+                "threshold_selection": threshold_selection,
+                "annotation_convention": "unannotated_negative",
+            }
+            if config.task == "rr_rh"
+            else {}
+        ),
         "test_cohorts": {
             "all": _cohort(
                 test_predictions,
@@ -1076,6 +1398,35 @@ def _run(
             ),
         },
     }
+    if config.transfer is not None:
+        audit = transfer_splits_report["leakage_audit"]
+        historical = set().union(*map(set, audit["source_cluster_ids"].values()))
+        cohorts = {
+            "historical": [
+                p for p in test_predictions if str(p["cluster_id"]) in historical
+            ],
+            "new_candidates": [
+                p
+                for p in test_predictions
+                if str(p["cluster_id"]) not in historical
+                and labels_for(info[p["key"]]) & {"cRR", "cRH"}
+            ],
+            "diffuse_emission": [
+                p
+                for p in test_predictions
+                if labels_for(info[p["key"]]) & {"DE", "RR", "RH", "cRR", "cRH"}
+            ],
+        }
+        for name, predictions in cohorts.items():
+            results["test_cohorts"][name] = _cohort(
+                predictions,
+                output_names,
+                sources,
+                task=config.task,
+                thresholds=config.thresholds,
+                candidate_policy=config.candidate_policy,
+            )
+        results["transfer"] = transfer_report
     _json(run_dir / "metrics.json", results)
     _json(run_dir / "status.json", {"status": "completed"})
     message(
@@ -1110,7 +1461,23 @@ def run_experiments(
     split_cache = {}
     runs = []
     for index, config in enumerate(configs, 1):
-        split_mode = "pair" if config.task == "rr_rh" and config.mode == "pair" else "raw"
+        if config.transfer is not None and config.transfer.reuse_splits:
+            message(f"\nExpérience {index}/{len(configs)}", config.verbose)
+            runs.append(
+                run_experiment(
+                    data_info,
+                    config,
+                    output_dir,
+                    class_names=class_names,
+                    splits=supplied_splits,
+                    model_factory=model_factory,
+                    input_adapter=input_adapter,
+                )
+            )
+            continue
+        split_mode = (
+            "pair" if config.task == "rr_rh" and config.mode == "pair" else "raw"
+        )
         split_key = (config.task, config.candidate_policy, split_mode)
         if supplied_splits is None and split_key not in split_cache:
             split_cache[split_key] = split_data_keys(
@@ -1124,8 +1491,12 @@ def run_experiments(
                 n_folds=n_folds,
                 fold_index=fold_index,
             )
-            split_cache[split_key] = _unique_cluster_splits(data_info, split_cache[split_key])
-        splits = supplied_splits if supplied_splits is not None else split_cache[split_key]
+            split_cache[split_key] = _unique_cluster_splits(
+                data_info, split_cache[split_key]
+            )
+        splits = (
+            supplied_splits if supplied_splits is not None else split_cache[split_key]
+        )
         message(f"\nExpérience {index}/{len(configs)}", config.verbose)
         runs.append(
             run_experiment(
@@ -1136,8 +1507,17 @@ def run_experiments(
                 splits=splits,
                 model_factory=model_factory,
                 input_adapter=input_adapter,
-                split_metadata=({"split_seed": split_seed, "n_folds": n_folds, "fold_index": fold_index,
-                                 "val_size": val_size, "test_size": test_size} if supplied_splits is None else None),
+                split_metadata=(
+                    {
+                        "split_seed": split_seed,
+                        "n_folds": n_folds,
+                        "fold_index": fold_index,
+                        "val_size": val_size,
+                        "test_size": test_size,
+                    }
+                    if supplied_splits is None
+                    else None
+                ),
             )
         )
     return runs
@@ -1149,11 +1529,19 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
         raise ValueError("Cohorte attendue : all, paired ou raw_only")
     rows, cohort_id = [], None
     run_dirs = list(run_dirs)
-    tasks = [json.loads((Path(d) / "metrics.json").read_text()).get("config", {}).get("task", "de_nde") for d in run_dirs]
+    tasks = [
+        json.loads((Path(d) / "metrics.json").read_text())
+        .get("config", {})
+        .get("task", "de_nde")
+        for d in run_dirs
+    ]
     canonical_cohort_id = None
     if tasks and all(task == "rr_rh" for task in tasks):
         from .multilabel_analysis import load_run, assert_comparable
-        canonical_cohort_id = assert_comparable([load_run(d) for d in run_dirs], cohort=cohort)
+
+        canonical_cohort_id = assert_comparable(
+            [load_run(d) for d in run_dirs], cohort=cohort
+        )
     for directory in run_dirs:
         result = json.loads((Path(directory) / "metrics.json").read_text())
         selected = result["test_cohorts"][cohort]
@@ -1191,9 +1579,15 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
                     if not isinstance(value, (dict, list)):
                         row[f"{label_name}_{metric_name}"] = value
         if result["config"].get("task", "de_nde") == "rr_rh":
-            row["candidate_policy"] = result["config"].get("candidate_policy", "unknown")
-            row["threshold_selection"] = result.get("threshold_selection", {}).get("method", "fixed")
-            for name, cutoff in resolve_thresholds(result["config"].get("thresholds")).items():
+            row["candidate_policy"] = result["config"].get(
+                "candidate_policy", "unknown"
+            )
+            row["threshold_selection"] = result.get("threshold_selection", {}).get(
+                "method", "fixed"
+            )
+            for name, cutoff in resolve_thresholds(
+                result["config"].get("thresholds")
+            ).items():
                 row[f"threshold_{name}"] = cutoff
         rows.append(row)
     if not rows:
@@ -1202,7 +1596,10 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=list(dict.fromkeys(key for row in rows for key in row)))
+            writer = csv.DictWriter(
+                stream,
+                fieldnames=list(dict.fromkeys(key for row in rows for key in row)),
+            )
             writer.writeheader()
             writer.writerows(rows)
     return rows

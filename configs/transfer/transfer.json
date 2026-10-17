@@ -1,0 +1,57 @@
+{
+    "data_dir": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified",
+    "output_dir": "/Users/antoinegdrn/PH_Project_I/results/transfer/dual_encoder_cnn_multimodal_DE_NDE_Transfer",
+    "class_names": [
+        "DE",
+        "NDE"
+    ],
+    "comparison_cohort": "all",
+    "experiments": [
+        {
+            "name": "dual_encoder_cnn_multimodal_DE_NDE_Transfer",
+            "task": "de_nde",
+            "model": "dual_encoder_cnn",
+            "mode": "multimodal",
+            "size": 128,
+            "candidate_policy": "positive",
+            "threshold_selection": "f1",
+            "device": "mps",
+            "use_scheduler": true,
+            "use_mixup": false,
+            "transfer": {
+                "source_experiment": "/Users/antoinegdrn/PH_Project_I/results/clusterprep/dual_encoder_cnn/dual_encoder_raw-20261004T195206-97272eed",
+                "reuse_splits": true,
+                "add_new_clusters": false,
+                "allow_subset": false,
+                "seed": 42,
+                "module_prefixes": {
+                    "radio": "radio_encoder",
+                    "xray": "chandra_encoder"
+                },
+                "phases": [
+                    {
+                        "name": "chandra_encoder_and_classifier",
+                        "epochs": 100,
+                        "learning_rates": {
+                            "xray": 1e-4,
+                            "head": 1e-4
+                        },
+                        "weight_decay": 0.001,
+                        "patience": 10
+                    },
+                    {
+                        "name": "full_finetuning",
+                        "epochs": 50,
+                        "learning_rates": {
+                            "radio": 0.00001,
+                            "xray": 0.00001,
+                            "head": 0.0001
+                        },
+                        "weight_decay": 0.001,
+                        "patience": 12
+                    }
+                ]
+            }
+        }
+    ]
+}

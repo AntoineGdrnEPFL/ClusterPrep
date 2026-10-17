@@ -242,3 +242,8 @@ avec bootstrap de clusters. Il inclut un mode synthétique autonome.
 Voir le [guide de lancement et contrat d'entrée](notebooks/README_multilabel.md)
 pour les nouvelles options `thresholds`, `threshold_selection`, les anciens
 schémas supportés et les limites scientifiques des annotations.
+# Transfer learning DE/NDE → RR/RH
+
+Le transfert multi-phase utilise les API d'entraînement existantes. Voir le
+[guide de transfert](TRANSFER_LEARNING.md), la [configuration ImageCNN](examples/transfer_image_cnn.json)
+et le [pilote comparatif](examples/transfer_pilot.py).

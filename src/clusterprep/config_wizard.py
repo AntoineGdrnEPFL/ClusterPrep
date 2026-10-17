@@ -28,7 +28,7 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
         while True:
             shown = (
                 json.dumps(default, ensure_ascii=False)
-                if isinstance(default, (dict, bool))
+                if isinstance(default, (dict, list, bool))
                 else default
             )
             text = read(
@@ -194,7 +194,7 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
             config = replace(config, seed=seed("Graine du modèle", defaults.seed))
             for item in fields(config):
                 key = item.name
-                if key in {"name", "mode", "model", "seed", "model_params"}:
+                if key in {"name", "mode", "model", "seed", "model_params", "transfer"}:
                     continue
                 default = getattr(config, key)
                 if key in {"thresholds", "threshold_grid"}:
@@ -257,6 +257,49 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
                     print_fn(f"Modèle invalide : {error}")
                     model = ask("Modèle à utiliser", model)
                     config = replace(config, model=model)
+            if config.task == "rr_rh" and ask(
+                "Training initialization (1. From scratch, 2. Transfer learning)",
+                1, int, lambda value: value in (1, 2),
+            ) == 2:
+                from .transfer import TransferConfig, validate_transfer_modules, prepare_transfer_source
+                instance = build_model(config, 2)
+                groups = validate_transfer_modules(instance)
+                print_fn("Groupes logiques disponibles : " + ", ".join(groups))
+                while True:
+                    source = ask("Répertoire de l'expérience source DE/NDE", "", path,
+                                 lambda value: all((Path(value) / f).is_file() for f in ("config.json", "best.pt", "splits.json")))
+                    reuse = ask("Réutiliser les splits historiques (oui/non)", True, boolean)
+                    add = ask("Ajouter les nouveaux cRR/cRH (oui/non)", True, boolean) if reuse else False
+                    subset = ask("Autoriser les exclusions historiques (oui/non)", False, boolean) if reuse else False
+                    source_metadata = json.loads((Path(source) / "config.json").read_text())
+                    source_config = ExperimentConfig(**source_metadata.get("config", source_metadata))
+                    source_model = build_model(source_config, 2)
+                    source_groups = validate_transfer_modules(source_model)
+                    named = {id(module): name for name, module in source_model.named_modules()}
+                    suggested = {name: named[id(module)] for name, module in source_groups.items()
+                                 if name in groups and name != "head"}
+                    print_fn("Préfixes source : " + json.dumps(suggested))
+                    prefixes = ask("Modules à transférer (objet JSON groupe cible:préfixe source)",
+                                   suggested, json.loads, lambda value: isinstance(value, dict))
+                    fresh = {name: 1e-3 if name == "head" else 1e-4 for name in groups if name not in prefixes}
+                    phase_defaults = [
+                        {"name": "new_branches", "epochs": 15, "patience": 8, "learning_rates": fresh},
+                        {"name": "full_finetuning", "epochs": 40, "patience": 12,
+                         "learning_rates": {name: 1e-5 if name in prefixes else 1e-4 for name in groups}},
+                    ]
+                    phases = ask("Phases d'entraînement (liste JSON)", phase_defaults, json.loads,
+                                 lambda value: isinstance(value, list))
+                    try:
+                        transfer = TransferConfig(source, reuse_splits=reuse, add_new_clusters=add,
+                                                  allow_subset=subset, module_prefixes=prefixes, phases=phases,
+                                                  seed=seed("Graine des nouveaux amas", 42))
+                        candidate = replace(config, transfer=transfer)
+                        prepare_transfer_source(instance, candidate, build_model)
+                        config = candidate
+                        print_fn("Transfert validé : " + json.dumps(asdict(transfer), ensure_ascii=False))
+                        break
+                    except (ValueError, TypeError, OSError, RuntimeError) as error:
+                        print_fn(f"Transfert invalide : {error}")
             experiments.append(asdict(config))
             if not ask("Ajouter une autre expérience (oui/non)", False, boolean):
                 break

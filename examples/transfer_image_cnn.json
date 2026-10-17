@@ -1,0 +1,49 @@
+{
+  "data_dir": "scratch/data/PSZ2/classified",
+  "output_dir": "results/transfer_image_cnn",
+  "class_names": null,
+  "comparison_cohort": "all",
+  "experiments": [
+    {
+      "name": "ImageCNN_RR_RH_Transfer",
+      "task": "rr_rh",
+      "model": "image_cnn",
+      "mode": "raw",
+      "candidate_policy": "positive",
+      "size": 128,
+      "batch_size": 16,
+      "device": "mps",
+      "seed": 42,
+      "augment": true,
+      "processed_dir": "processed",
+      "use_mixup": false,
+      "use_scheduler": false,
+      "threshold_selection": "f1",
+      "model_params": {"hidden_dim": 32, "classifier_hidden_dim": 32},
+      "transfer": {
+        "source_experiment": "results/clusterprep/image_cnn/image_cnn_raw-20261003T192326-659482b7",
+        "reuse_splits": true,
+        "add_new_clusters": true,
+        "allow_subset": false,
+        "seed": 42,
+        "module_prefixes": {"radio": "encoder"},
+        "phases": [
+          {
+            "name": "classifier_only",
+            "epochs": 15,
+            "learning_rates": {"head": 0.001},
+            "weight_decay": 0.001,
+            "patience": 8
+          },
+          {
+            "name": "full_finetuning",
+            "epochs": 40,
+            "learning_rates": {"radio": 0.00001, "head": 0.0001},
+            "weight_decay": 0.001,
+            "patience": 12
+          }
+        ]
+      }
+    }
+  ]
+}

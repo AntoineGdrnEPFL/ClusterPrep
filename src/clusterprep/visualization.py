@@ -19,6 +19,14 @@ def plot_history(run_dir, output_path=None):
             ax.plot([r["epoch"] for r in history], [r[split][metric] for r in history],
                     marker="o", label=label)
         ax.set(xlabel="Époque", ylabel=title)
+        previous = None
+        for record in history:
+            phase = record.get("phase")
+            if phase is not None and phase != previous:
+                ax.axvline(record["epoch"] - .5, color="grey", linestyle="--", alpha=.5)
+                ax.text(record["epoch"], .98, phase, rotation=90, va="top",
+                        transform=ax.get_xaxis_transform(), fontsize=8)
+                previous = phase
         ax.legend()
         ax.grid(alpha=.2)
     fig.suptitle(run_dir.name)

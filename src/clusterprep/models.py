@@ -116,6 +116,12 @@ class SimpleCNN(nn.Module):
         self.encoder = _encoder(in_channels, width)
         self.classifier = nn.Linear(width * 2, num_classes)
 
+    def transfer_modules(self):
+        return {
+            "radio": self.encoder,
+            "head": self.classifier,
+        }
+
     def forward(self, x):
         return self.classifier(self.encoder(x))
 
@@ -129,6 +135,13 @@ class FusionCNN(nn.Module):
         self.radio = _encoder(1, width)
         self.chandra = _encoder(2, width)
         self.classifier = nn.Linear(width * 4 + 1, num_classes)
+
+    def transfer_modules(self):
+        return {
+            "radio": self.radio,
+            "xray": self.chandra,
+            "head": self.classifier,
+        }
 
     def forward(self, x):
         raw_features = self.radio(x[:, :1])
@@ -162,6 +175,12 @@ class ImageCNN(nn.Module):
             nn.Dropout(0.5),
             nn.Linear(classifier_hidden_dim, num_classes),
         )
+
+    def transfer_modules(self):
+        return {
+            "radio": self.encoder,
+            "head": self.classifier,
+        }
 
     def forward(self, x):
         features = self.encoder(x)
@@ -218,6 +237,13 @@ class DualEncoderCNN(nn.Module):
             nn.Dropout(0.5),
             nn.Linear(fusion_hidden_dim, num_classes),
         )
+
+    def transfer_modules(self):
+        return {
+            "radio": self.radio_encoder,
+            **({"xray": self.chandra_encoder} if self.chandra_encoder is not None else {}),
+            "head": self.classifier,
+        }
 
     def forward(self, x):
 
@@ -390,7 +416,11 @@ class DualSSNEncoder(nn.Module):
         # [B,C,K,Hs,Ws]
         #       ↓
         # [B,C*K,Hs,Ws]
-        if scattering.ndim != 5 or scattering.shape[0] != x.shape[0] or tuple(scattering.shape[1:]) != self.scattering_shape:
+        if (
+            scattering.ndim != 5
+            or scattering.shape[0] != x.shape[0]
+            or tuple(scattering.shape[1:]) != self.scattering_shape
+        ):
             raise ValueError("Scattering attendu sous forme [B,C,K,Hs,Ws]")
         scat = scattering.flatten(1, 2)
         scat = self.conv_to_latent_scat(scat).flatten(1)
@@ -445,6 +475,12 @@ class DualSSN(nn.Module):
             nn.Dropout(dropout_rate),
             nn.Linear(classifier_hidden_dim, num_classes),
         )
+
+    def transfer_modules(self):
+        return {
+            "radio": self.encoder,
+            "head": self.classifier,
+        }
 
     def forward(self, x, scattering):
         return self.classifier(self.encoder(x, scattering))
@@ -509,6 +545,13 @@ class DualEncoderSSN(nn.Module):
             nn.Dropout(dropout_rate),
             nn.Linear(fusion_hidden_dim, num_classes),
         )
+
+    def transfer_modules(self):
+        return {
+            "radio": self.radio_encoder,
+            **({"xray": self.chandra_encoder} if self.chandra_encoder is not None else {}),
+            "head": self.classifier,
+        }
 
     def forward(self, x, scattering):
 
