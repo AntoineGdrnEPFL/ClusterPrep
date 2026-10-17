@@ -197,7 +197,7 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
                 if key in {"name", "mode", "model", "seed", "model_params", "transfer"}:
                     continue
                 default = getattr(config, key)
-                if key in {"thresholds", "threshold_grid"}:
+                if key in {"thresholds", "threshold_grid", "training_phases"}:
                     parser = json.loads
                 elif key == "processed_dir":
                     default = path(default) if default is not None else None
@@ -257,10 +257,32 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
                     print_fn(f"Modèle invalide : {error}")
                     model = ask("Modèle à utiliser", model)
                     config = replace(config, model=model)
-            if config.task == "rr_rh" and ask(
-                "Training initialization (1. From scratch, 2. Transfer learning)",
-                1, int, lambda value: value in (1, 2),
-            ) == 2:
+            choices = (1, 2, 3) if config.task == "rr_rh" else (1, 3)
+            legacy_option = ", 2. Transfer learning historique" if config.task == "rr_rh" else ""
+            initialization = ask(
+                f"Training initialization (1. From scratch{legacy_option}, 3. Transfert modulaire)",
+                1, int, lambda value: value in choices,
+            )
+            if initialization == 3:
+                from .modular_transfer import ModularTransferConfig, initialize_transfer
+                instance = build_model(config, 2)
+                groups = instance.transfer_modules() if hasattr(instance, "transfer_modules") else {}
+                print_fn("Modules cibles : " + ", ".join(groups or dict(instance.named_modules())))
+                while True:
+                    raw_transfer = ask(
+                        "Transfert modulaire (objet JSON enabled/sources/mappings/defaults)",
+                        {"enabled": True, "sources": {}, "mappings": []}, json.loads,
+                        lambda value: isinstance(value, dict),
+                    )
+                    try:
+                        transfer = ModularTransferConfig(**raw_transfer)
+                        report = initialize_transfer(instance, transfer)
+                        config = replace(config, transfer=transfer)
+                        print_fn("Transfert validé : " + json.dumps(report, ensure_ascii=False))
+                        break
+                    except (ValueError, TypeError, OSError, RuntimeError) as error:
+                        print_fn(f"Transfert invalide : {error}")
+            elif initialization == 2:
                 from .transfer import TransferConfig, validate_transfer_modules, prepare_transfer_source
                 instance = build_model(config, 2)
                 groups = validate_transfer_modules(instance)

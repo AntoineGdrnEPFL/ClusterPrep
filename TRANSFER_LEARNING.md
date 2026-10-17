@@ -1,5 +1,10 @@
 # Transfert DE/NDE → RR/RH
 
+Cette page décrit le format historique, toujours pris en charge. Pour les
+transferts indépendants des tâches, plusieurs checkpoints et des mappings
+explicites, utiliser le [transfert modulaire](MODULAR_TRANSFER.md) et son
+[exemple JSON](examples/transfer_modular.json).
+
 Le transfert passe par les mêmes `ExperimentConfig`, `run_experiment`,
 `run_experiments`, `Trainer.fit`, datasets, pertes et métriques que les
 entraînements classiques. `transfer=None` conserve l'entraînement de zéro.

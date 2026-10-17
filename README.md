@@ -8,6 +8,10 @@ La version 0.2 ajoute l'entraînement multi-expériences : voir
 [le guide d'entraînement](TRAINING.md) pour les trois modes de données,
 l'early stopping, les checkpoints et la comparaison des métriques.
 
+Le [transfert modulaire](MODULAR_TRANSFER.md) permet d'initialiser des modules
+depuis plusieurs checkpoints, entre tâches et architectures compatibles, avec
+des mappings JSON explicites et des phases d'entraînement indépendantes.
+
 ## Installation
 
 Depuis la racine `PH_Project_I`, dans votre environnement Python :

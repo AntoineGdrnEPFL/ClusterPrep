@@ -51,6 +51,11 @@ from .transfer import (TransferConfig, TransferPhase, validate_transfer_modules,
                        transfer_model_modules, load_pretrained_modules_from_state,
                        read_checkpoint_state, configure_transfer_phase, set_transfer_train_mode)
 from .experiment_loader import resolve_transfer_splits
+from .modular_transfer import (ModularTransferConfig, TransferError,
+                               initialize_transfer, resolve_module,
+                               check_module_compatibility)
+__all__ += ["ModularTransferConfig", "TransferError", "initialize_transfer",
+            "resolve_module", "check_module_compatibility"]
 __all__ += ["TransferConfig", "TransferPhase", "validate_transfer_modules",
             "transfer_model_modules", "load_pretrained_modules_from_state",
             "read_checkpoint_state", "configure_transfer_phase", "set_transfer_train_mode",

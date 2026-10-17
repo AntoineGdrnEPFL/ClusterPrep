@@ -4,10 +4,12 @@ Les annotations des CSV sont la référence évaluée. Le manifeste permet de
 vérifier identités, fuite, politique des candidats et présence des modalités.
 Pandas/Jupyter ne sont requis que par le notebook ; les calculs restent ici.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 import csv
+import math
 import hashlib
 import json
 import uuid
@@ -15,7 +17,11 @@ import uuid
 import numpy as np
 
 from .labels import task_target
-from .metrics import multilabel_metrics, resolve_thresholds, select_multilabel_thresholds
+from .metrics import (
+    multilabel_metrics,
+    resolve_thresholds,
+    select_multilabel_thresholds,
+)
 
 LABELS = ("RR", "RH")
 
@@ -23,8 +29,11 @@ LABELS = ("RR", "RH")
 def _json(path):
     def invalid(value):
         raise ValueError(f"Constante JSON non finie : {value}")
+
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"), parse_constant=invalid)
+        value = json.loads(
+            Path(path).read_text(encoding="utf-8"), parse_constant=invalid
+        )
         if not isinstance(value, dict):
             raise ValueError("Objet JSON requis")
         return value
@@ -49,15 +58,28 @@ class Predictions:
     has_chandra: np.ndarray
 
     def subset(self, indices):
-        return Predictions(*(getattr(self, name)[indices] for name in self.__dataclass_fields__))
+        return Predictions(
+            *(getattr(self, name)[indices] for name in self.__dataclass_fields__)
+        )
 
     def cohort(self, name="all"):
         if name not in {"all", "paired", "raw_only"}:
             raise ValueError("Cohorte attendue : all, paired ou raw_only")
-        return self if name == "all" else self.subset(self.has_chandra if name == "paired" else ~self.has_chandra)
+        return (
+            self
+            if name == "all"
+            else self.subset(
+                self.has_chandra if name == "paired" else ~self.has_chandra
+            )
+        )
 
     def scores(self, thresholds=None):
-        return multilabel_metrics(self.targets, self.probabilities, target_mask=self.mask, thresholds=thresholds)
+        return multilabel_metrics(
+            self.targets,
+            self.probabilities,
+            target_mask=self.mask,
+            thresholds=thresholds,
+        )
 
 
 @dataclass
@@ -77,15 +99,32 @@ class MultilabelRun:
         return self.path.name
 
     def summary(self):
-        params = self.metadata.get("scattering_config") or self.config.get("model_params", {})
+        params = self.metadata.get("scattering_config") or self.config.get(
+            "model_params", {}
+        )
         split_config = self.splits.get("split_config", {})
-        row = {"run_id": self.id, "path": str(self.path),
-               **{k: self.config.get(k) for k in ("model", "mode", "seed", "candidate_policy")},
-               "best_epoch": self.metrics.get("best_epoch"), "seconds": self.metrics.get("seconds"),
-               "fold_index": split_config.get("fold_index") if split_config.get("n_folds") else None, "n_folds": split_config.get("n_folds"),
-               "J": params.get("J"), "L": params.get("L"), "max_order": params.get("max_order"),
-               "threshold_method": self.metrics.get("threshold_selection", {}).get("method", "fixed_legacy"),
-               "threshold_RR": self.thresholds["RR"], "threshold_RH": self.thresholds["RH"]}
+        row = {
+            "run_id": self.id,
+            "path": str(self.path),
+            **{
+                k: self.config.get(k)
+                for k in ("model", "mode", "seed", "candidate_policy")
+            },
+            "best_epoch": self.metrics.get("best_epoch"),
+            "seconds": self.metrics.get("seconds"),
+            "fold_index": (
+                split_config.get("fold_index") if split_config.get("n_folds") else None
+            ),
+            "n_folds": split_config.get("n_folds"),
+            "J": params.get("J"),
+            "L": params.get("L"),
+            "max_order": params.get("max_order"),
+            "threshold_method": self.metrics.get("threshold_selection", {}).get(
+                "method", "fixed_legacy"
+            ),
+            "threshold_RR": self.thresholds["RR"],
+            "threshold_RH": self.thresholds["RH"],
+        }
         # Actual resolved parameters are present in the scattering identity, not
         # necessarily in model_params. Do not invent defaults for legacy files.
         for split in ("train", "validation", "test"):
@@ -101,18 +140,39 @@ def _read_predictions(path, split, manifest, config, thresholds, issues):
             rows = list(reader)
     except OSError as error:
         raise ValueError(f"Fichier requis absent : {path}") from error
-    required = {"key", "cluster_id", "has_chandra"} | {f"{kind}_{label}" for kind in ("label", "probability") for label in LABELS}
+    required = {"key", "cluster_id", "has_chandra"} | {
+        f"{kind}_{label}" for kind in ("label", "probability") for label in LABELS
+    }
     if not rows or not required <= fields:
-        raise ValueError(f"{path}: CSV RR/RH vide ou colonnes manquantes : {sorted(required-fields)}")
+        raise ValueError(
+            f"{path}: CSV RR/RH vide ou colonnes manquantes : {sorted(required-fields)}"
+        )
     keys = np.array([r["key"] for r in rows])
     ids = np.array([r["cluster_id"] for r in rows])
-    if any(not v for v in keys) or any(not v for v in ids) or len(set(keys)) != len(keys) or len(set(ids)) != len(ids):
-        raise ValueError(f"{path}: identifiants vides ou clusters dupliqués (augmentations interdites)")
+    if (
+        any(not v for v in keys)
+        or any(not v for v in ids)
+        or len(set(keys)) != len(keys)
+        or len(set(ids)) != len(ids)
+    ):
+        raise ValueError(
+            f"{path}: identifiants vides ou clusters dupliqués (augmentations interdites)"
+        )
     if set(keys) != set(manifest[split]):
         raise ValueError(f"{path}: clés incompatibles avec splits.json/{split}")
     samples = manifest.get("samples", {})
-    target = np.array([[float(row[f"label_{name}"]) if row[f"label_{name}"] else np.nan for name in LABELS] for row in rows])
-    proba = np.array([[float(row[f"probability_{name}"]) for name in LABELS] for row in rows])
+    target = np.array(
+        [
+            [
+                float(row[f"label_{name}"]) if row[f"label_{name}"] else np.nan
+                for name in LABELS
+            ]
+            for row in rows
+        ]
+    )
+    proba = np.array(
+        [[float(row[f"probability_{name}"]) for name in LABELS] for row in rows]
+    )
     has = np.array([_boolean(row["has_chandra"]) for row in rows])
     known_fields = {f"known_{n}" for n in LABELS}
     if fields & known_fields and not known_fields <= fields:
@@ -123,46 +183,82 @@ def _read_predictions(path, split, manifest, config, thresholds, issues):
         derived = []
         for key in keys:
             sample = samples.get(key, {})
-            if "labels" in sample and config.get("candidate_policy") in {"positive", "ignore"}:
-                derived.append(task_target(sample, "rr_rh", config["candidate_policy"])[1])
+            if "labels" in sample and config.get("candidate_policy") in {
+                "positive",
+                "ignore",
+            }:
+                derived.append(
+                    task_target(sample, "rr_rh", config["candidate_policy"])[1]
+                )
             elif config.get("candidate_policy") == "positive":
                 derived.append([1, 1])
             else:
-                raise ValueError(f"{path}: masque absent et impossible à reconstruire sans politique/annotations")
+                raise ValueError(
+                    f"{path}: masque absent et impossible à reconstruire sans politique/annotations"
+                )
         mask = np.array(derived, dtype=bool)
-        issues.append(f"{split}: ancien CSV sans known_RR/RH ; masque dérivé de la politique enregistrée, sans certifier l'exhaustivité du catalogue.")
+        issues.append(
+            f"{split}: ancien CSV sans known_RR/RH ; masque dérivé de la politique enregistrée, sans certifier l'exhaustivité du catalogue."
+        )
     scores = multilabel_metrics(target, proba, target_mask=mask, thresholds=thresholds)
     predicted = proba >= np.array(list(thresholds.values()))
     for i, row in enumerate(rows):
         item = samples.get(keys[i])
         if item is None or str(item.get("cluster_id")) != ids[i]:
-            raise ValueError(f"{path}: cluster_id incompatible avec le manifeste pour {keys[i]}")
+            raise ValueError(
+                f"{path}: cluster_id incompatible avec le manifeste pour {keys[i]}"
+            )
         if "chandra_path" in item and bool(item["chandra_path"]) != has[i]:
             raise ValueError(f"{path}: disponibilité CHANDRA contradictoire")
-        if "labels" in item and config.get("candidate_policy") in {"positive", "ignore"}:
-            expected, expected_mask = task_target(item, "rr_rh", config["candidate_policy"])
-            if np.any(mask[i] & (~expected_mask.astype(bool))) or not np.array_equal(target[i][mask[i]], expected[mask[i]]):
-                raise ValueError(f"{path}: vérité/masque incompatible avec les annotations de {keys[i]}")
+        if "labels" in item and config.get("candidate_policy") in {
+            "positive",
+            "ignore",
+        }:
+            expected, expected_mask = task_target(
+                item, "rr_rh", config["candidate_policy"]
+            )
+            if np.any(mask[i] & (~expected_mask.astype(bool))) or not np.array_equal(
+                target[i][mask[i]], expected[mask[i]]
+            ):
+                raise ValueError(
+                    f"{path}: vérité/masque incompatible avec les annotations de {keys[i]}"
+                )
         for j, name in enumerate(LABELS):
-            if f"prediction_{name}" in fields and float(row[f"prediction_{name}"]) != int(predicted[i, j]):
-                raise ValueError(f"{path}: prediction_{name} incompatible avec les seuils enregistrés")
-    if any(v["n_positive"] < 5 or v["n_negative"] < 5 for v in scores["per_label"].values()):
-        issues.append(f"{split}: moins de 5 positifs ou négatifs connus pour au moins un label ; estimations fragiles.")
+            if f"prediction_{name}" in fields and float(
+                row[f"prediction_{name}"]
+            ) != int(predicted[i, j]):
+                raise ValueError(
+                    f"{path}: prediction_{name} incompatible avec les seuils enregistrés"
+                )
+    if any(
+        v["n_positive"] < 5 or v["n_negative"] < 5 for v in scores["per_label"].values()
+    ):
+        issues.append(
+            f"{split}: moins de 5 positifs ou négatifs connus pour au moins un label ; estimations fragiles."
+        )
     return Predictions(ids, keys, target, proba, mask, has)
 
 
 def load_run(directory):
     """Charge schémas actuels et anciens CSV RR/RH explicitement reconnus."""
     path = Path(directory).expanduser().resolve()
-    metadata, metrics, splits = (_json(path / name) for name in ("config.json", "metrics.json", "splits.json"))
-    metadata_config, result_config = metadata.get("config", metadata), metrics.get("config", {})
+    metadata, metrics, splits = (
+        _json(path / name) for name in ("config.json", "metrics.json", "splits.json")
+    )
+    metadata_config, result_config = metadata.get("config", metadata), metrics.get(
+        "config", {}
+    )
     if not isinstance(metadata_config, dict) or not isinstance(result_config, dict):
         raise ValueError(f"{path.name}: config doit être un objet JSON")
     config = {**metadata_config, **result_config}
     if config.get("task") != "rr_rh":
-        raise ValueError(f"{path.name}: seule la tâche rr_rh est acceptée, sans inférence depuis DE/NDE")
+        raise ValueError(
+            f"{path.name}: seule la tâche rr_rh est acceptée, sans inférence depuis DE/NDE"
+        )
     if config.get("candidate_policy") not in {"positive", "ignore"}:
-        raise ValueError(f"{path.name}: politique de candidats absente ou non prise en charge")
+        raise ValueError(
+            f"{path.name}: politique de candidats absente ou non prise en charge"
+        )
     status_path = path / "status.json"
     if status_path.exists() and _json(status_path).get("status") != "completed":
         raise ValueError(f"{path.name}: expérience non terminée")
@@ -170,21 +266,36 @@ def load_run(directory):
     names = metrics.get("class_names", metadata.get("class_names"))
     if names not in (list(LABELS), list(reversed(LABELS))):
         if names == ["DE", "NDE"]:
-            issues.append("Ancien class_names DE/NDE erroné : les colonnes explicites RR/RH du CSV font foi.")
+            issues.append(
+                "Ancien class_names DE/NDE erroné : les colonnes explicites RR/RH du CSV font foi."
+            )
         else:
             raise ValueError(f"{path.name}: noms de sorties RR/RH absents ou inconnus")
-    issues.append("Convention enregistrée/historique : annotation absente = négative ; cela ne prouve pas un négatif astrophysique fiable. Aucun label n'est réinterprété ici.")
+    issues.append(
+        "Convention enregistrée/historique : annotation absente = négative ; cela ne prouve pas un négatif astrophysique fiable. Aucun label n'est réinterprété ici."
+    )
     selected = metrics.get("threshold_selection", metadata.get("evaluation", {}))
     if not isinstance(selected, dict):
         raise ValueError(f"{path.name}: provenance des seuils invalide")
-    if selected.get("method") not in (None, "fixed") and selected.get("selection_split") != "validation":
-        raise ValueError(f"{path.name}: seuils optimisés hors validation ou provenance absente")
-    thresholds = resolve_thresholds(selected.get("thresholds", config.get("thresholds")))
+    if (
+        selected.get("method") not in (None, "fixed")
+        and selected.get("selection_split") != "validation"
+    ):
+        raise ValueError(
+            f"{path.name}: seuils optimisés hors validation ou provenance absente"
+        )
+    thresholds = resolve_thresholds(
+        selected.get("thresholds", config.get("thresholds"))
+    )
     if not selected and "thresholds" not in config:
-        issues.append("Seuils absents de l'ancien schéma : convention historique explicite RR=RH=0.5.")
+        issues.append(
+            "Seuils absents de l'ancien schéma : convention historique explicite RR=RH=0.5."
+        )
     samples = splits.get("samples")
     if not isinstance(samples, dict):
-        raise ValueError(f"{path.name}: splits.json.samples requis pour contrôler les clusters")
+        raise ValueError(
+            f"{path.name}: splits.json.samples requis pour contrôler les clusters"
+        )
     groups = []
     for split in ("train", "validation", "test"):
         keys = splits.get(split)
@@ -202,22 +313,45 @@ def load_run(directory):
     history = []
     if history_path.exists():
         for line in history_path.read_text().splitlines():
-            record = json.loads(line, parse_constant=lambda v: (_ for _ in ()).throw(ValueError(f"NaN dans history : {v}")))
+            record = json.loads(
+                line,
+                parse_constant=lambda v: (_ for _ in ()).throw(
+                    ValueError(f"NaN dans history : {v}")
+                ),
+            )
             if not isinstance(record, dict) or "epoch" not in record:
                 raise ValueError(f"{history_path}: champ epoch absent")
             history.append(record)
     else:
-        issues.append("history.jsonl absent : les courbes d'apprentissage ne seront pas disponibles.")
-    predictions = {split: _read_predictions(path / f"{split}_predictions.csv", split, splits, config, thresholds, issues)
-                   for split in ("validation", "test")}
-    return MultilabelRun(path, config, metadata, metrics, splits, history, predictions, thresholds, issues)
+        issues.append(
+            "history.jsonl absent : les courbes d'apprentissage ne seront pas disponibles."
+        )
+    predictions = {
+        split: _read_predictions(
+            path / f"{split}_predictions.csv", split, splits, config, thresholds, issues
+        )
+        for split in ("validation", "test")
+    }
+    return MultilabelRun(
+        path,
+        config,
+        metadata,
+        metrics,
+        splits,
+        history,
+        predictions,
+        thresholds,
+        issues,
+    )
 
 
 def discover_runs(root):
     """Découverte RR/RH uniquement ; ne masque pas les erreurs des runs sélectionnés."""
     root = Path(root)
     if not root.exists():
-        raise ValueError(f"Dossier de résultats absent : {root}. Renseigner RUN_DIRS/RESULTS_ROOT ou utiliser le mode synthétique.")
+        raise ValueError(
+            f"Dossier de résultats absent : {root}. Renseigner RUN_DIRS/RESULTS_ROOT ou utiliser le mode synthétique."
+        )
     paths = []
     for path in sorted(root.rglob("metrics.json")):
         value = _json(path)
@@ -232,12 +366,26 @@ def cohort_signature(run, cohort="all"):
     p = run.predictions["test"].cohort(cohort)
     if not len(p.keys):
         raise ValueError(f"{run.id}: cohorte {cohort} vide")
-    entries = sorted((str(cid), [int(t[j]) if m[j] else None for j in range(2)], m.astype(int).tolist(), bool(has))
-                     for cid, t, m, has in zip(p.cluster_ids, p.targets, p.mask, p.has_chandra))
-    payload = {"task": "rr_rh", "candidate_policy": run.config["candidate_policy"],
-               "annotation_convention": run.metrics.get("annotation_convention", "unannotated_negative"),
-               "samples": entries}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True, allow_nan=False).encode()).hexdigest()
+    entries = sorted(
+        (
+            str(cid),
+            [int(t[j]) if m[j] else None for j in range(2)],
+            m.astype(int).tolist(),
+            bool(has),
+        )
+        for cid, t, m, has in zip(p.cluster_ids, p.targets, p.mask, p.has_chandra)
+    )
+    payload = {
+        "task": "rr_rh",
+        "candidate_policy": run.config["candidate_policy"],
+        "annotation_convention": run.metrics.get(
+            "annotation_convention", "unannotated_negative"
+        ),
+        "samples": entries,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, allow_nan=False).encode()
+    ).hexdigest()
 
 
 def assert_comparable(runs, cohort="all"):
@@ -245,7 +393,9 @@ def assert_comparable(runs, cohort="all"):
         raise ValueError("Aucune expérience à comparer")
     signatures = [cohort_signature(run, cohort) for run in runs]
     if len(set(signatures)) != 1:
-        raise ValueError("Cohortes incompatibles : clusters test, vérités, masques, couverture ou politique différents. Séparer les folds.")
+        raise ValueError(
+            "Cohortes incompatibles : clusters test, vérités, masques, couverture ou politique différents. Séparer les folds."
+        )
     return signatures[0]
 
 
@@ -261,7 +411,11 @@ def annotation_rows(run):
     rows = []
     for split in ("train", "validation", "test"):
         predicted = run.predictions.get(split)
-        lookup = {} if predicted is None else {key: i for i, key in enumerate(predicted.keys)}
+        lookup = (
+            {}
+            if predicted is None
+            else {key: i for i, key in enumerate(predicted.keys)}
+        )
         for key in run.splits[split]:
             info = run.splits["samples"][key]
             labels = set(info["labels"]) if "labels" in info else None
@@ -270,19 +424,36 @@ def annotation_rows(run):
                 target, mask = predicted.targets[i], predicted.mask[i]
                 has = bool(predicted.has_chandra[i])
             elif labels is not None:
-                target, mask = task_target(info, "rr_rh", run.config["candidate_policy"])
+                target, mask = task_target(
+                    info, "rr_rh", run.config["candidate_policy"]
+                )
                 mask = mask.astype(bool)
                 has = bool(info.get("chandra_path"))
             else:
-                target, mask, has = [None, None], [False, False], bool(info.get("chandra_path"))
-            row = {"run_id": run.id, "split": split, "cluster_id": info["cluster_id"],
-                   "has_chandra": has, "annotation_detail_available": labels is not None,
-                   "combination": "".join(str(int(t)) for t in target) if all(mask) else "unknown"}
+                target, mask, has = (
+                    [None, None],
+                    [False, False],
+                    bool(info.get("chandra_path")),
+                )
+            row = {
+                "run_id": run.id,
+                "split": split,
+                "cluster_id": info["cluster_id"],
+                "has_chandra": has,
+                "annotation_detail_available": labels is not None,
+                "combination": (
+                    "".join(str(int(t)) for t in target) if all(mask) else "unknown"
+                ),
+            }
             for j, name in enumerate(LABELS):
                 row[f"label_{name}"] = int(target[j]) if mask[j] else None
                 row[f"known_{name}"] = bool(mask[j])
-                row[f"confirmed_{name}"] = name in labels if labels is not None else None
-                row[f"candidate_{name}"] = "c" + name in labels if labels is not None else None
+                row[f"confirmed_{name}"] = (
+                    name in labels if labels is not None else None
+                )
+                row[f"candidate_{name}"] = (
+                    "c" + name in labels if labels is not None else None
+                )
             rows.append(row)
     return rows
 
@@ -294,25 +465,51 @@ def annotation_summary(run):
         subset = [row for row in rows if row["split"] == split]
         for name in LABELS:
             truth = [r[f"label_{name}"] for r in subset if r[f"known_{name}"]]
-            summary.append({"run_id": run.id, "split": split, "label": name,
-                "n_clusters": len(subset), "n_known": len(truth), "n_positive": sum(truth),
-                "n_negative": len(truth)-sum(truth), "prevalence": float(np.mean(truth)) if truth else None,
-                "n_chandra": sum(r["has_chandra"] for r in subset),
-                "annotation_detail_available": all(r["annotation_detail_available"] for r in subset)})
+            summary.append(
+                {
+                    "run_id": run.id,
+                    "split": split,
+                    "label": name,
+                    "n_clusters": len(subset),
+                    "n_known": len(truth),
+                    "n_positive": sum(truth),
+                    "n_negative": len(truth) - sum(truth),
+                    "prevalence": float(np.mean(truth)) if truth else None,
+                    "n_chandra": sum(r["has_chandra"] for r in subset),
+                    "annotation_detail_available": all(
+                        r["annotation_detail_available"] for r in subset
+                    ),
+                }
+            )
     return summary
 
 
 def flatten_metrics(metrics):
     row = {k: v for k, v in metrics.items() if not isinstance(v, (dict, list))}
     for label, values in metrics["per_label"].items():
-        row.update({f"{label}_{k}": v for k, v in values.items() if not isinstance(v, (dict, list))})
+        row.update(
+            {
+                f"{label}_{k}": v
+                for k, v in values.items()
+                if not isinstance(v, (dict, list))
+            }
+        )
     return row
 
 
-def validation_selection(run, *, method="f1", grid=None, min_precision=.8, thresholds=None, cohort="all"):
+def validation_selection(
+    run, *, method="f1", grid=None, min_precision=0.8, thresholds=None, cohort="all"
+):
     p = run.predictions["validation"].cohort(cohort)
-    selection = select_multilabel_thresholds(p.targets, p.probabilities, target_mask=p.mask,
-        method=method, grid=grid, min_precision=min_precision, fallback=thresholds or run.thresholds)
+    selection = select_multilabel_thresholds(
+        p.targets,
+        p.probabilities,
+        target_mask=p.mask,
+        method=method,
+        grid=grid,
+        min_precision=min_precision,
+        fallback=thresholds or run.thresholds,
+    )
     return {**selection, "validation_cohort": cohort, "run_id": run.id}
 
 
@@ -321,8 +518,20 @@ def threshold_curves(run, grid=None):
     grid = np.arange(5, 100, 5) / 100 if grid is None else grid
     rows = []
     for threshold in grid:
-        scores = multilabel_metrics(p.targets, p.probabilities, target_mask=p.mask, threshold=float(threshold))
-        rows.extend({"label": name, "threshold": float(threshold), **{k: scores["per_label"][name][k] for k in ("precision", "recall", "f1", "n_known")}} for name in LABELS)
+        scores = multilabel_metrics(
+            p.targets, p.probabilities, target_mask=p.mask, threshold=float(threshold)
+        )
+        rows.extend(
+            {
+                "label": name,
+                "threshold": float(threshold),
+                **{
+                    k: scores["per_label"][name][k]
+                    for k in ("precision", "recall", "f1", "n_known")
+                },
+            }
+            for name in LABELS
+        )
     return rows
 
 
@@ -333,11 +542,20 @@ def error_rows(predictions, thresholds):
     for i, cid in enumerate(predictions.cluster_ids):
         for j, label in enumerate(LABELS):
             if predictions.mask[i, j] and predicted[i, j] != predictions.targets[i, j]:
-                row = {"cluster_id": str(cid), "key": str(predictions.keys[i]), "label": label,
-                       "error": "FP" if predicted[i, j] else "FN", "has_chandra": bool(predictions.has_chandra[i])}
+                row = {
+                    "cluster_id": str(cid),
+                    "key": str(predictions.keys[i]),
+                    "label": label,
+                    "error": "FP" if predicted[i, j] else "FN",
+                    "has_chandra": bool(predictions.has_chandra[i]),
+                }
                 for k, name in enumerate(LABELS):
                     row[f"probability_{name}"] = float(predictions.probabilities[i, k])
-                    row[f"label_{name}"] = int(predictions.targets[i, k]) if predictions.mask[i, k] else None
+                    row[f"label_{name}"] = (
+                        int(predictions.targets[i, k])
+                        if predictions.mask[i, k]
+                        else None
+                    )
                     row[f"known_{name}"] = bool(predictions.mask[i, k])
                 rows.append(row)
     return rows
@@ -347,15 +565,36 @@ def combination_scores(predictions, thresholds, min_support=5):
     known = predictions.mask.all(1)
     rows = []
     for combo in ("00", "10", "01", "11"):
-        selected = known & (predictions.targets == np.array(list(map(int, combo)))).all(1)
+        selected = known & (predictions.targets == np.array(list(map(int, combo)))).all(
+            1
+        )
         n = int(selected.sum())
-        rows.append({"combination": combo, "n_clusters": n, "small_support": n < min_support,
-                     "subset_accuracy": predictions.subset(selected).scores(thresholds)["subset_accuracy"] if n >= min_support else None})
-    rows.append({"combination": "unknown", "n_clusters": int((~known).sum()), "small_support": None, "subset_accuracy": None})
+        rows.append(
+            {
+                "combination": combo,
+                "n_clusters": n,
+                "small_support": n < min_support,
+                "subset_accuracy": (
+                    predictions.subset(selected).scores(thresholds)["subset_accuracy"]
+                    if n >= min_support
+                    else None
+                ),
+            }
+        )
+    rows.append(
+        {
+            "combination": "unknown",
+            "n_clusters": int((~known).sum()),
+            "small_support": None,
+            "subset_accuracy": None,
+        }
+    )
     return rows
 
 
-def bootstrap_clusters(predictions, thresholds=None, *, iterations=200, seed=42, confidence=.95):
+def bootstrap_clusters(
+    predictions, thresholds=None, *, iterations=200, seed=42, confidence=0.95
+):
     """Percentile bootstrap de clusters uniques ; seuils figés, sans réoptimisation.
 
     Les réplications dégénérées sont exclues métrique par métrique ; n_valid est
@@ -363,25 +602,65 @@ def bootstrap_clusters(predictions, thresholds=None, *, iterations=200, seed=42,
     """
     n = len(predictions.cluster_ids)
     if not n or n != len(set(predictions.cluster_ids)):
-        raise ValueError("Bootstrap : clusters uniques non vides requis (pas de variantes augmentées)")
+        raise ValueError(
+            "Bootstrap : clusters uniques non vides requis (pas de variantes augmentées)"
+        )
     if not isinstance(iterations, int) or iterations < 2 or not 0 < confidence < 1:
-        raise ValueError("Bootstrap : iterations >= 2 et confidence entre 0 et 1 requis")
+        raise ValueError(
+            "Bootstrap : iterations >= 2 et confidence entre 0 et 1 requis"
+        )
     estimates = flatten_metrics(predictions.scores(thresholds))
-    wanted = [key for key in estimates if key in {"macro_f1", "micro_f1", "average_precision_macro", "roc_auc_macro", "subset_accuracy", "hamming_accuracy", "balanced_accuracy"}
-              or any(key == f"{name}_{metric}" for name in LABELS for metric in ("f1", "average_precision", "roc_auc", "precision", "recall", "brier"))]
+    wanted = [
+        key
+        for key in estimates
+        if key
+        in {
+            "macro_f1",
+            "micro_f1",
+            "average_precision_macro",
+            "roc_auc_macro",
+            "subset_accuracy",
+            "hamming_accuracy",
+            "balanced_accuracy",
+        }
+        or any(
+            key == f"{name}_{metric}"
+            for name in LABELS
+            for metric in (
+                "f1",
+                "average_precision",
+                "roc_auc",
+                "precision",
+                "recall",
+                "brier",
+            )
+        )
+    ]
     samples = {key: [] for key in wanted}
     rng = np.random.default_rng(seed)
     for _ in range(iterations):
-        metrics = flatten_metrics(predictions.subset(rng.integers(0, n, size=n)).scores(thresholds))
+        metrics = flatten_metrics(
+            predictions.subset(rng.integers(0, n, size=n)).scores(thresholds)
+        )
         for key in wanted:
             if metrics[key] is not None:
                 samples[key].append(metrics[key])
-    alpha = (1-confidence)/2
-    return [{"metric": key, "estimate": estimates[key],
-             "lower": float(np.quantile(values, alpha)) if len(values) >= 2 else None,
-             "upper": float(np.quantile(values, 1-alpha)) if len(values) >= 2 else None,
-             "n_valid": len(values), "iterations": iterations, "seed": seed, "n_clusters": n}
-            for key, values in samples.items()]
+    alpha = (1 - confidence) / 2
+    return [
+        {
+            "metric": key,
+            "estimate": estimates[key],
+            "lower": float(np.quantile(values, alpha)) if len(values) >= 2 else None,
+            "upper": (
+                float(np.quantile(values, 1 - alpha)) if len(values) >= 2 else None
+            ),
+            "n_valid": len(values),
+            "iterations": iterations,
+            "seed": seed,
+            "n_clusters": n,
+        }
+        for key, values in samples.items()
+    ]
 
 
 def fold_summary(runs, cohort="all", thresholds_by_run=None):
@@ -399,7 +678,14 @@ def fold_summary(runs, cohort="all", thresholds_by_run=None):
         if run.config.get("threshold_selection", "fixed") != "fixed":
             excluded.add("thresholds")
         protocol = {k: v for k, v in run.config.items() if k not in excluded}
-        key = json.dumps({"config": protocol, "n_folds": split["n_folds"], "split_seed": split.get("split_seed")}, sort_keys=True)
+        key = json.dumps(
+            {
+                "config": protocol,
+                "n_folds": split["n_folds"],
+                "split_seed": split.get("split_seed"),
+            },
+            sort_keys=True,
+        )
         groups.setdefault(key, []).append(run)
     rows = []
     for group in groups.values():
@@ -407,23 +693,46 @@ def fold_summary(runs, cohort="all", thresholds_by_run=None):
             continue
         folds = [r.splits["split_config"]["fold_index"] for r in group]
         if len(set(folds)) != len(folds):
-            raise ValueError("Folds dupliqués : sélectionner une répétition par fold pour le résumé")
+            raise ValueError(
+                "Folds dupliqués : sélectionner une répétition par fold pour le résumé"
+            )
         sets = [set(r.predictions["test"].cluster_ids) for r in group]
-        if any(a & b for i, a in enumerate(sets) for b in sets[i+1:]):
+        if any(a & b for i, a in enumerate(sets) for b in sets[i + 1 :]):
             raise ValueError("Les jeux de test des folds se chevauchent")
         thresholds_by_run = thresholds_by_run or {}
-        scores = [r.predictions["test"].cohort(cohort).scores(thresholds_by_run.get(r.id, r.thresholds)) for r in group]
-        for metric in ("macro_f1", "micro_f1", "average_precision_macro", "roc_auc_macro"):
+        scores = [
+            r.predictions["test"]
+            .cohort(cohort)
+            .scores(thresholds_by_run.get(r.id, r.thresholds))
+            for r in group
+        ]
+        for metric in (
+            "macro_f1",
+            "micro_f1",
+            "average_precision_macro",
+            "roc_auc_macro",
+        ):
             values = [m[metric] for m in scores if m[metric] is not None]
-            rows.append({"model": group[0].config.get("model"), "mode": group[0].config.get("mode"),
-                "metric": metric, "n_folds_present": len(group), "n_folds_expected": group[0].splits["split_config"]["n_folds"],
-                "n_valid": len(values), "mean": float(np.mean(values)) if values else None,
-                "std": float(np.std(values, ddof=1)) if len(values) > 1 else None})
+            rows.append(
+                {
+                    "model": group[0].config.get("model"),
+                    "mode": group[0].config.get("mode"),
+                    "metric": metric,
+                    "n_folds_present": len(group),
+                    "n_folds_expected": group[0].splits["split_config"]["n_folds"],
+                    "n_valid": len(values),
+                    "mean": float(np.mean(values)) if values else None,
+                    "std": float(np.std(values, ddof=1)) if len(values) > 1 else None,
+                }
+            )
     return rows
 
 
 def create_output_directory(root):
-    path = Path(root) / (datetime.now(timezone.utc).strftime("analysis-%Y%m%dT%H%M%S-") + uuid.uuid4().hex[:8])
+    path = Path(root) / (
+        datetime.now(timezone.utc).strftime("analysis-%Y%m%dT%H%M%S-")
+        + uuid.uuid4().hex[:8]
+    )
     path.mkdir(parents=True, exist_ok=False)
     return path
 
@@ -442,6 +751,7 @@ def export_rows(path, rows):
 def plot_score_curves(predictions, title=""):
     import matplotlib.pyplot as plt
     from sklearn.metrics import precision_recall_curve, roc_curve
+
     metrics = predictions.scores()
     fig, axes = plt.subplots(2, 2, figsize=(11, 8), constrained_layout=True)
     for j, label in enumerate(LABELS):
@@ -456,23 +766,39 @@ def plot_score_curves(predictions, title=""):
             roc.plot(fpr, tpr, label=f"AUC = {scores['roc_auc']:.3f}")
         else:
             for ax in (pr, roc):
-                ax.text(.5, .5, "Deux classes connues requises", ha="center", transform=ax.transAxes)
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Deux classes connues requises",
+                    ha="center",
+                    transform=ax.transAxes,
+                )
         if scores["prevalence"] is not None:
-            pr.axhline(scores["prevalence"], ls="--", color="gray", label=f"Prévalence = {scores['prevalence']:.2f}")
+            pr.axhline(
+                scores["prevalence"],
+                ls="--",
+                color="gray",
+                label=f"Prévalence = {scores['prevalence']:.2f}",
+            )
         roc.plot([0, 1], [0, 1], "--", color="gray", label="Aléatoire")
         pr.set(xlabel="Rappel", ylabel="Précision", title=f"{label} — Precision–recall")
-        roc.set(xlabel="Taux de faux positifs", ylabel="Taux de vrais positifs", title=f"{label} — ROC")
+        roc.set(
+            xlabel="Taux de faux positifs",
+            ylabel="Taux de vrais positifs",
+            title=f"{label} — ROC",
+        )
         for ax in (pr, roc):
             ax.set(xlim=(0, 1), ylim=(0, 1.05))
             if ax.get_legend_handles_labels()[0]:
                 ax.legend(loc="best")
-            ax.grid(alpha=.2)
+            ax.grid(alpha=0.2)
     fig.suptitle(title)
     return fig
 
 
 def plot_confusions(predictions, thresholds, title=""):
     import matplotlib.pyplot as plt
+
     scores = predictions.scores(thresholds)
     fig, axes = plt.subplots(1, 2, figsize=(9, 4), constrained_layout=True)
     for name, ax in zip(LABELS, axes):
@@ -480,20 +806,38 @@ def plot_confusions(predictions, thresholds, title=""):
         ax.imshow(matrix, cmap="Blues", vmin=0, vmax=max(1, matrix.max()))
         for (i, j), value in np.ndenumerate(matrix):
             tag = [["TN", "FP"], ["FN", "TP"]][i][j]
-            ax.text(j, i, f"{tag}\n{value}", ha="center", va="center", color="white" if value > matrix.max()/2 else "black")
-        ax.set(xticks=[0, 1], yticks=[0, 1], xlabel="Prédiction", ylabel="Vérité connue",
-               title=f"{name} — seuil {scores['per_label'][name]['threshold']:.2f}")
+            ax.text(
+                j,
+                i,
+                f"{tag}\n{value}",
+                ha="center",
+                va="center",
+                color="white" if value > matrix.max() / 2 else "black",
+            )
+        ax.set(
+            xticks=[0, 1],
+            yticks=[0, 1],
+            xlabel="Prédiction",
+            ylabel="Vérité connue",
+            title=f"{name} — seuil {scores['per_label'][name]['threshold']:.2f}",
+        )
     fig.suptitle(title)
     return fig
 
 
 def plot_probabilities(predictions, thresholds, title=""):
     import matplotlib.pyplot as plt
+
     fig, axes = plt.subplots(1, 2, figsize=(11, 4), constrained_layout=True)
     for j, (name, ax) in enumerate(zip(LABELS, axes)):
         for value, text in ((0, "Négatifs connus"), (1, "Positifs connus")):
             selected = predictions.mask[:, j] & (predictions.targets[:, j] == value)
-            ax.hist(predictions.probabilities[selected, j], bins=np.linspace(0, 1, 11), alpha=.55, label=f"{text} (n={selected.sum()})")
+            ax.hist(
+                predictions.probabilities[selected, j],
+                bins=np.linspace(0, 1, 11),
+                alpha=0.55,
+                label=f"{text} (n={selected.sum()})",
+            )
         ax.axvline(thresholds[name], ls="--", color="black", label="Seuil figé")
         ax.set(title=name, xlabel="Probabilité sigmoid", ylabel="Nombre de clusters")
         ax.legend(fontsize=8)
@@ -503,58 +847,352 @@ def plot_probabilities(predictions, thresholds, title=""):
 
 def plot_learning_history(run):
     import matplotlib.pyplot as plt
+
     fig, axes = plt.subplots(2, 2, figsize=(11, 7), constrained_layout=True)
-    for metric, ax in zip(("loss", "macro_f1", "average_precision_macro", "roc_auc_macro"), axes.flat):
+    for metric, ax in zip(
+        ("loss", "macro_f1", "average_precision_macro", "roc_auc_macro"), axes.flat
+    ):
         found = False
         for split in ("train", "validation"):
-            pairs = [(record["epoch"], record.get(split, {}).get(metric)) for record in run.history]
+            pairs = [
+                (record["epoch"], record.get(split, {}).get(metric))
+                for record in run.history
+            ]
             pairs = [(x, y) for x, y in pairs if y is not None]
             if pairs:
                 ax.plot(*zip(*pairs), marker="o", label=split)
                 found = True
         if not found:
-            ax.text(.5, .5, "Champ absent / non défini", ha="center", transform=ax.transAxes)
+            ax.text(
+                0.5,
+                0.5,
+                "Champ absent / non défini",
+                ha="center",
+                transform=ax.transAxes,
+            )
         else:
             ax.legend()
         ax.set(title=metric, xlabel="Époque")
-        ax.grid(alpha=.2)
+        ax.grid(alpha=0.2)
     fig.suptitle(f"{run.id} — seuils d'entraînement, avant sélection finale")
     return fig
 
 
 def plot_validation_thresholds(run, selected):
     import matplotlib.pyplot as plt
+
     rows = threshold_curves(run)
     fig, axes = plt.subplots(1, 2, figsize=(11, 4), constrained_layout=True)
     for name, ax in zip(LABELS, axes):
         subset = [row for row in rows if row["label"] == name]
         for metric in ("precision", "recall", "f1"):
-            ax.plot([r["threshold"] for r in subset], [r[metric] for r in subset], label=metric)
+            ax.plot(
+                [r["threshold"] for r in subset],
+                [r[metric] for r in subset],
+                label=metric,
+            )
         ax.axvline(selected[name], color="black", ls="--", label="Seuil appliqué")
-        ax.set(title=f"{name} — validation uniquement", xlabel="Seuil", ylabel="Score", ylim=(0, 1.05))
+        ax.set(
+            title=f"{name} — validation uniquement",
+            xlabel="Seuil",
+            ylabel="Score",
+            ylim=(0, 1.05),
+        )
         ax.legend()
-        ax.grid(alpha=.2)
+        ax.grid(alpha=0.2)
     return fig
 
 
 def plot_comparison(rows, intervals):
     import matplotlib.pyplot as plt
+
     fig, axes = plt.subplots(1, 3, figsize=(14, 4), constrained_layout=True)
     names = [r["run_id"] for r in rows]
     x = np.arange(len(names))
-    for metric, ax in zip(("macro_f1", "average_precision_macro", "roc_auc_macro"), axes):
+    for metric, ax in zip(
+        ("macro_f1", "average_precision_macro", "roc_auc_macro"), axes
+    ):
         values = [r.get(metric) for r in rows]
-        ax.scatter(x, [np.nan if v is None else v for v in values], label="Estimation test")
+        ax.scatter(
+            x, [np.nan if v is None else v for v in values], label="Estimation test"
+        )
         for i, name in enumerate(names):
-            ci = next((v for v in intervals.get(name, []) if v["metric"] == metric), None)
+            ci = next(
+                (v for v in intervals.get(name, []) if v["metric"] == metric), None
+            )
             if ci and ci["lower"] is not None:
                 ax.vlines(i, ci["lower"], ci["upper"], color="C0")
-                ax.hlines([ci["lower"], ci["upper"]], i-.07, i+.07, color="C0")
-        ax.set(title=metric, xticks=x, xticklabels=[f"{r['model']}\n{r['mode']}\n{r['run_id'][-8:]}" for r in rows], ylim=(-.03, 1.03))
+                ax.hlines([ci["lower"], ci["upper"]], i - 0.07, i + 0.07, color="C0")
+        ax.set(
+            title=metric,
+            xticks=x,
+            xticklabels=[
+                f"{r['model']}\n{r['mode']}\n{r['run_id'][-8:]}" for r in rows
+            ],
+            ylim=(-0.03, 1.03),
+        )
         ax.tick_params(axis="x", labelsize=8)
-        ax.grid(axis="y", alpha=.2)
+        ax.grid(axis="y", alpha=0.2)
     fig.suptitle("Même cohorte test — IC bootstrap de clusters à seuils figés")
     return fig
+
+
+def classification_gallery_rows(run, thresholds, *, split="test", cohort="all"):
+    """Lignes descriptives des clusters du split pour les galeries de classification.
+
+    Chaque cluster connu pour un label apparaît soit dans la galerie `correct`,
+    soit dans la galerie `incorrect` de ce label.
+    """
+    if split not in run.predictions:
+        raise ValueError(f"Split absent des prédictions: {split}")
+    thresholds = resolve_thresholds(thresholds)
+    predictions = run.predictions[split].cohort(cohort)
+    lookup = run.splits.get("samples", {})
+    predicted = predictions.probabilities >= np.array(
+        [thresholds[name] for name in LABELS]
+    )
+    rows = []
+    for i, key in enumerate(predictions.keys):
+        info = lookup.get(key, {})
+        row = {
+            "run_id": run.id,
+            "split": split,
+            "cohort": cohort,
+            "key": str(key),
+            "cluster_id": str(predictions.cluster_ids[i]),
+            "has_chandra": bool(predictions.has_chandra[i]),
+        }
+        for j, name in enumerate(LABELS):
+            known = bool(predictions.mask[i, j])
+            truth = int(predictions.targets[i, j]) if known else None
+            pred = int(predicted[i, j]) if known else None
+            row[f"known_{name}"] = known
+            row[f"label_{name}"] = truth
+            row[f"prediction_{name}"] = pred
+            row[f"probability_{name}"] = float(predictions.probabilities[i, j])
+            row[f"correct_{name}"] = (pred == truth) if known else None
+            row[f"outcome_{name}"] = (
+                "correct"
+                if known and pred == truth
+                else ("incorrect" if known else "unknown")
+            )
+        rows.append(row)
+    return rows
+
+
+def _load_preprocessed_image(path, npz_key=None):
+    """Read an already-preprocessed 2D array; no raw FITS fallback."""
+    path = Path(path).expanduser()
+    if not path.is_file():
+        raise FileNotFoundError(f"Preprocessed file missing: {path}")
+    if path.suffix.lower() in {".fits", ".fit", ".fts"}:
+        from astropy.io import fits
+
+        with fits.open(path) as hdul:
+            data = hdul[0].data
+    elif path.suffix.lower() == ".npy":
+        data = np.load(path, allow_pickle=False)
+    elif path.suffix.lower() == ".npz":
+        with np.load(path, allow_pickle=False) as archive:
+            if npz_key is None:
+                if len(archive.files) != 1:
+                    raise ValueError(f"Set an npz_key for {path}: {archive.files}")
+                npz_key = archive.files[0]
+            data = archive[npz_key]
+    else:
+        raise ValueError(f"Unsupported preprocessed format: {path}")
+    data = np.asarray(data, dtype=np.float32).squeeze()
+    if data.ndim != 2:
+        raise ValueError(f"Expected a 2D image in {path}; got {data.shape}")
+    return data
+
+
+def _prepare_cluster_modalities(
+    entry,
+    *,
+    processed_root,
+    radio_template,
+    chandra_template,
+    radio_npz_key=None,
+    chandra_npz_key=None,
+):
+    """Use aligned preprocessed images exclusively; do not crop or reproject."""
+    root = Path(processed_root).expanduser().resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"Preprocessed root does not exist: {root}")
+
+    fields = {"cluster_id": str(entry["cluster_id"]), "key": str(entry["key"])}
+
+    def resolve(template):
+        candidate = (root / template.format(**fields)).resolve()
+        if not candidate.is_relative_to(root):
+            raise ValueError(f"Preprocessed path escapes root: {candidate}")
+        return candidate
+
+    radio = _load_preprocessed_image(resolve(radio_template), radio_npz_key)
+    chandra = (
+        _load_preprocessed_image(resolve(chandra_template), chandra_npz_key)
+        if entry["has_chandra"]
+        else None
+    )
+    if chandra is not None and chandra.shape != radio.shape:
+        raise ValueError(
+            f"{entry['cluster_id']}: preprocessed modalities not aligned "
+            f"(radio={radio.shape}, CHANDRA={chandra.shape})"
+        )
+    return radio, chandra
+
+
+def _display_image(array, percentiles=(1, 99)):
+    array = np.asarray(array, dtype=np.float32)
+    finite = array[np.isfinite(array)]
+    if finite.size == 0:
+        return np.zeros_like(array, dtype=np.float32)
+    low, high = np.percentile(finite, percentiles)
+    if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+        low, high = float(np.min(finite)), float(np.max(finite))
+        if high <= low:
+            return np.zeros_like(array, dtype=np.float32)
+    clipped = np.clip(array, low, high)
+    scaled = (clipped - low) / (high - low)
+    return np.asarray(scaled, dtype=np.float32)
+
+
+def _contour_levels(chandra_display, n_levels=4):
+    finite = chandra_display[np.isfinite(chandra_display)]
+    finite = finite[finite > 0]
+    if finite.size < 10:
+        return None
+    low = max(0.35, float(np.percentile(finite, 70)))
+    high = max(low + 1e-3, float(np.percentile(finite, 98)))
+    levels = np.linspace(low, high, n_levels)
+    levels = np.unique(levels)
+    return levels if len(levels) >= 1 else None
+
+
+def _gallery_title(entry):
+    return (
+        f"{entry['cluster_id']}\n"
+        f"RR {entry['label_RR'] if entry['known_RR'] else '?'}→{entry['prediction_RR'] if entry['known_RR'] else '?'}  "
+        f"RH {entry['label_RH'] if entry['known_RH'] else '?'}→{entry['prediction_RH'] if entry['known_RH'] else '?'}\n"
+        f"pRR={entry['probability_RR']:.2f}  pRH={entry['probability_RH']:.2f}"
+    )
+
+
+def plot_classification_gallery(
+    entries,
+    *,
+    title="",
+    processed_root,
+    radio_template,
+    chandra_template,
+    ncols=4,
+    tile_title_fontsize=8,
+    radio_npz_key=None,
+    chandra_npz_key=None,
+):
+    """One panel per cluster: radio background + optional CHANDRA contours."""
+    import matplotlib.pyplot as plt
+
+    entries = list(entries)
+    if ncols < 1:
+        raise ValueError("ncols must be positive")
+    nrows = max(1, math.ceil(len(entries) / ncols))
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(3.7 * ncols, 4.0 * nrows),
+        layout="constrained",
+        squeeze=False,
+    )
+    for ax in axes.flat:
+        ax.axis("off")
+    if not entries:
+        axes[0, 0].text(
+            0.5,
+            0.5,
+            "Aucun amas dans cette catégorie",
+            ha="center",
+            va="center",
+            transform=axes[0, 0].transAxes,
+        )
+    for ax, entry in zip(axes.flat, entries):
+        radio, chandra = _prepare_cluster_modalities(
+            entry,
+            processed_root=processed_root,
+            radio_template=radio_template,
+            chandra_template=chandra_template,
+            radio_npz_key=radio_npz_key,
+            chandra_npz_key=chandra_npz_key,
+        )
+        ax.imshow(
+            _display_image(radio, percentiles=(1, 99.5)),
+            origin="lower",
+            cmap="plasma",
+            interpolation="none",
+        )
+        if chandra is not None:
+            displayed = _display_image(chandra, percentiles=(1, 99.5))
+            levels = _contour_levels(displayed, n_levels=4)
+            if levels is not None:
+                ax.contour(
+                    displayed,
+                    levels=levels,
+                    colors="white",
+                    linewidths=0.8,
+                    alpha=0.9,
+                    origin="lower",
+                )
+        ax.set_title(_gallery_title(entry), fontsize=tile_title_fontsize, pad=5)
+        ax.text(
+            0.02,
+            0.02,
+            "Radio + contours CHANDRA" if chandra is not None else "Radio seule",
+            ha="left",
+            va="bottom",
+            transform=ax.transAxes,
+            fontsize=7,
+            color="white",
+            bbox={"facecolor": "black", "alpha": 0.55, "edgecolor": "none", "pad": 2},
+        )
+    if title:
+        fig.suptitle(title)
+    return fig
+
+
+def plot_testset_label_galleries(
+    run,
+    thresholds,
+    *,
+    processed_root,
+    radio_template="{cluster_id}_RAW_processed_size128_v2.fits",
+    chandra_template="{cluster_id}_CHANDRA_processed_size128_v2.fits",
+    split="test",
+    cohort="all",
+    ncols=4,
+    radio_npz_key=None,
+    chandra_npz_key=None,
+):
+    """Four RR/RH test-set galleries, exclusively from preprocessed arrays."""
+    rows = classification_gallery_rows(run, thresholds, split=split, cohort=cohort)
+    figures = {}
+    for label in LABELS:
+        known = [row for row in rows if row[f"known_{label}"]]
+        omitted = len(rows) - len(known)
+        for status in ("correct", "incorrect"):
+            subset = [row for row in known if row[f"outcome_{label}"] == status]
+            figures[f"{label}_{status}"] = plot_classification_gallery(
+                subset,
+                title=f"{run.id} — {split} / {cohort} — {label} {status} "
+                f"(n={len(subset)}, inconnus omis={omitted})",
+                processed_root=processed_root,
+                radio_template=radio_template,
+                chandra_template=chandra_template,
+                radio_npz_key=radio_npz_key,
+                chandra_npz_key=chandra_npz_key,
+                ncols=ncols,
+            )
+    return figures, rows
 
 
 def create_demo_runs(root, seed=42):
@@ -568,17 +1206,35 @@ def create_demo_runs(root, seed=42):
     rng = np.random.default_rng(seed)
     patterns = [{"RR"}, {"RH"}, {"RR", "RH"}, {"cRR"}, {"cRH"}, {"cRR", "cRH"}]
     keys = [f"synthetic-{i}.fits" for i in range(48)]
-    samples = {key: {"cluster_id": key.removesuffix(".fits"), "labels": sorted(patterns[i % 6]),
-                     "raw_path": f"synthetic/{key}", "chandra_path": f"synthetic/chandra-{key}" if i % 3 else None}
-               for i, key in enumerate(keys)}
-    splits = {"train": keys[:24], "validation": keys[24:36], "test": keys[36:], "samples": samples}
+    samples = {
+        key: {
+            "cluster_id": key.removesuffix(".fits"),
+            "labels": sorted(patterns[i % 6]),
+            "raw_path": f"synthetic/{key}",
+            "chandra_path": f"synthetic/chandra-{key}" if i % 3 else None,
+        }
+        for i, key in enumerate(keys)
+    }
+    splits = {
+        "train": keys[:24],
+        "validation": keys[24:36],
+        "test": keys[36:],
+        "samples": samples,
+    }
     paths = []
     for model in ("image_cnn", "dual_ssn", "dual_encoder_ssn"):
         path = root / f"synthetic-{model}"
         path.mkdir()
-        config = {"task": "rr_rh", "name": path.name, "model": model, "mode": "multimodal", "seed": seed,
-                  "candidate_policy": "ignore", "thresholds": {"RR": .5, "RH": .5},
-                  "model_params": {"J": 2, "L": 2, "max_order": 2} if "ssn" in model else {}}
+        config = {
+            "task": "rr_rh",
+            "name": path.name,
+            "model": model,
+            "mode": "multimodal",
+            "seed": seed,
+            "candidate_policy": "ignore",
+            "thresholds": {"RR": 0.5, "RH": 0.5},
+            "model_params": {"J": 2, "L": 2, "max_order": 2} if "ssn" in model else {},
+        }
         data, scores = {}, {}
         for split in ("validation", "test"):
             rows = []
@@ -587,23 +1243,50 @@ def create_demo_runs(root, seed=42):
                 target, mask = task_target(samples[key], "rr_rh", "ignore")
                 y.append(target)
                 masks.append(mask)
-            probabilities = np.clip(.15 + .5*np.asarray(y) + rng.normal(0, .23, (len(y), 2)), .01, .99)
+            probabilities = np.clip(
+                0.15 + 0.5 * np.asarray(y) + rng.normal(0, 0.23, (len(y), 2)),
+                0.01,
+                0.99,
+            )
             for key, target, mask, proba in zip(splits[split], y, masks, probabilities):
-                row = {"key": key, "cluster_id": samples[key]["cluster_id"], "has_chandra": bool(samples[key]["chandra_path"])}
+                row = {
+                    "key": key,
+                    "cluster_id": samples[key]["cluster_id"],
+                    "has_chandra": bool(samples[key]["chandra_path"]),
+                }
                 for j, label in enumerate(LABELS):
-                    row.update({f"label_{label}": int(target[j]), f"known_{label}": int(mask[j]),
-                                f"probability_{label}": float(proba[j]), f"prediction_{label}": int(proba[j] >= .5)})
+                    row.update(
+                        {
+                            f"label_{label}": int(target[j]),
+                            f"known_{label}": int(mask[j]),
+                            f"probability_{label}": float(proba[j]),
+                            f"prediction_{label}": int(proba[j] >= 0.5),
+                        }
+                    )
                 rows.append(row)
             export_rows(path / f"{split}_predictions.csv", rows)
             scores[split] = multilabel_metrics(y, probabilities, target_mask=masks)
-        metrics = {"schema_version": 2, "run_id": path.name, "class_names": list(LABELS), "config": config,
-                   "synthetic": True, "annotation_convention": "unannotated_negative", "best_epoch": None,
-                   "seconds": None, "validation": scores["validation"], "test": scores["test"]}
-        for name, value in (("config.json", {"config": config, "synthetic": True}), ("metrics.json", metrics),
-                            ("splits.json", splits), ("status.json", {"status": "completed"})):
-            (path/name).write_text(json.dumps(value, indent=2, allow_nan=False))
+        metrics = {
+            "schema_version": 2,
+            "run_id": path.name,
+            "class_names": list(LABELS),
+            "config": config,
+            "synthetic": True,
+            "annotation_convention": "unannotated_negative",
+            "best_epoch": None,
+            "seconds": None,
+            "validation": scores["validation"],
+            "test": scores["test"],
+        }
+        for name, value in (
+            ("config.json", {"config": config, "synthetic": True}),
+            ("metrics.json", metrics),
+            ("splits.json", splits),
+            ("status.json", {"status": "completed"}),
+        ):
+            (path / name).write_text(json.dumps(value, indent=2, allow_nan=False))
         # Empty history deliberately exercises missing training curves. These
         # scores are simulated predictions, never fabricated training epochs.
-        (path/"history.jsonl").write_text("")
+        (path / "history.jsonl").write_text("")
         paths.append(path)
     return paths

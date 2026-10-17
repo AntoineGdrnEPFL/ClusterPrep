@@ -1,0 +1,59 @@
+{
+    "data_dir": "scratch/data/PSZ2/classified",
+    "output_dir": "results/transfer_modular",
+    "comparison_cohort": "all",
+    "experiments": [
+        {
+            "name": "multisource_de_nde",
+            "task": "de_nde",
+            "model": "dual_encoder_cnn",
+            "mode": "multimodal",
+            "size": 128,
+            "device": "mps",
+            "use_mixup": false,
+            "transfer": {
+                "enabled": true,
+                "defaults": {
+                    "compatibility": "strict",
+                    "on_missing": "warn",
+                    "on_incompatible": "skip",
+                    "on_conflict": "error"
+                },
+                "sources": {
+                    "radio_pretrain": {
+                        "checkpoint": "/Users/antoinegdrn/PH_Project_I/results/clusterprep/dual_encoder_cnn/dual_encoder_raw-20261004T195206-97272eed/best.pt"
+                    }
+                },
+                "mappings": [
+                    {
+                        "source": "radio_pretrain",
+                        "from": "radio_encoder",
+                        "to": "radio_encoder",
+                        "on_incompatible": "error"
+                    }
+                ]
+            },
+            "training_phases": [
+                {
+                    "name": "classifier_and_chandra_encoder",
+                    "epochs": 100,
+                    "patience": 20,
+                    "learning_rates": {
+                        "head": 0.001,
+                        "xray": 0.00001
+                    }
+                },
+                {
+                    "name": "full",
+                    "epochs": 40,
+                    "patience": 12,
+                    "learning_rates": {
+                        "radio": 0.00001,
+                        "xray": 0.00001,
+                        "head": 0.0001
+                    }
+                }
+            ]
+        }
+    ]
+}

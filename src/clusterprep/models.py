@@ -1,11 +1,23 @@
 """Petits modèles de référence ; les expériences acceptent aussi une factory."""
 
 import importlib
+import importlib.metadata
 import inspect
+from types import MethodType
 import torch
 from torch import nn
 
 _MODELS = {}
+
+
+def _scattering_transfer_signature(module):
+    """Explicit semantic adapter for the optional Kymatio dependency."""
+    return {
+        "version": 1, "kymatio": importlib.metadata.version("kymatio"),
+        "J": module.J, "L": module.L, "max_order": module.max_order,
+        "shape": module.shape, "pre_pad": module.pre_pad,
+        "out_type": module.out_type,
+    }
 
 
 def register_model(name, *, modes=("raw", "pair", "multimodal")):
@@ -100,6 +112,9 @@ class ImageEncoder(nn.Module):
 
         self.encoder.train()
         self.to_latent.train()
+
+    def transfer_signature(self):
+        return {"version": 1, "output_dim": self.output_dim}
 
     def forward(self, x):
         x = self.encoder(x)
@@ -310,6 +325,9 @@ class SEBlock(nn.Module):
             nn.Sigmoid(),
         )
 
+    def transfer_signature(self):
+        return {"version": 1}
+
     def forward(self, x):
         return x * self.fc(self.pool(x))
 
@@ -343,6 +361,10 @@ class DualSSNEncoder(nn.Module):
         self.input_shape = tuple(input_shape)
         self.scattering = Scattering2D(
             J=J, shape=(height, width), L=L, max_order=max_order
+        )
+        # Explicit adapter for this external module's forward semantics.
+        self.scattering.transfer_signature = MethodType(
+            _scattering_transfer_signature, self.scattering
         )
 
         def block(in_ch, out_ch, kernel=3, stride=1, dropout=0.2):
@@ -405,6 +427,10 @@ class DualSSNEncoder(nn.Module):
             scat_features = self.conv_to_latent_scat(scat)
             self.output_dim = img_features.numel() + scat_features.numel()
         self.train()
+
+    def transfer_signature(self):
+        return {"version": 1, "input_shape": self.input_shape,
+                "scattering_shape": self.scattering_shape, "output_dim": self.output_dim}
 
     def forward(self, x, scattering):
         if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
@@ -608,12 +634,23 @@ def _list_models_with_scattering():
     ]
 
 
+_TASK_OUTPUT_NAMES = {"de_nde": ("DE", "NDE"), "rr_rh": ("RR", "RH")}
+
+
 def output_names_for_task(task):
-    if task == "de_nde":
-        return ("DE", "NDE")
-    if task == "rr_rh":
-        return ("RR", "RH")
-    raise ValueError(f"Tâche inconnue : {task}")
+    if task not in _TASK_OUTPUT_NAMES:
+        raise ValueError(f"Tâche inconnue : {task}")
+    return _TASK_OUTPUT_NAMES[task]
+
+
+def task_for_output_names(names):
+    """Recover legacy task metadata only from an unambiguous set of labels."""
+    if isinstance(names, (list, tuple)) and all(isinstance(n, str) for n in names):
+        matches = [task for task, outputs in _TASK_OUTPUT_NAMES.items()
+                   if len(names) == len(outputs) and set(names) == set(outputs)]
+        if len(matches) == 1:
+            return matches[0]
+    raise ValueError("Missing source task and unrecognized class_names; provide source.config_path with an explicit task")
 
 
 def build_model(config, num_classes, input_shape=None):

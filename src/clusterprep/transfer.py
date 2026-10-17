@@ -83,16 +83,9 @@ class TransferConfig:
 
 def validate_transfer_plan(model, config):
     """Validate all phases before any optimizer step or checkpoint mutation."""
-    modules = validate_transfer_modules(model)
+    modules = validate_training_phases(model, config.phases)
     if "head" not in modules:
         raise ValueError("A transfer model must identify its classification head")
-    for phase in config.phases:
-        phase.__post_init__()
-        unknown = set(phase.learning_rates) - set(modules)
-        if unknown:
-            raise ValueError(f"Unknown trainable groups in {phase.name}: {sorted(unknown)}")
-        if not any(list(modules[name].parameters()) for name in phase.learning_rates):
-            raise ValueError(f"No trainable parameters in phase {phase.name}")
     unknown = set(config.module_prefixes) - set(modules)
     if unknown:
         raise ValueError(f"Unknown target modules: {sorted(unknown)}")
@@ -101,6 +94,21 @@ def validate_transfer_plan(model, config):
     missing = fresh - set(config.phases[0].learning_rates)
     if missing:
         raise ValueError(f"First phase must train newly initialized groups: {sorted(missing)}")
+    return modules
+
+
+def validate_training_phases(model, phases):
+    """Validate the independent training strategy without inspecting sources."""
+    modules = validate_transfer_modules(model)
+    if not phases or len({p.name for p in phases}) != len(phases):
+        raise ValueError("Training phases must be nonempty with unique names")
+    for phase in phases:
+        phase.__post_init__()
+        unknown = set(phase.learning_rates) - set(modules)
+        if unknown:
+            raise ValueError(f"Unknown trainable groups in {phase.name}: {sorted(unknown)}")
+        if not any(list(modules[name].parameters()) for name in phase.learning_rates):
+            raise ValueError(f"No trainable parameters in phase {phase.name}")
     return modules
 
 
@@ -147,6 +155,11 @@ def read_checkpoint_state(checkpoint_path: str | Path) -> dict[str, torch.Tensor
     checkpoint = torch.load(
         Path(checkpoint_path), map_location="cpu", weights_only=True
     )
+    return checkpoint_state(checkpoint)
+
+
+def checkpoint_state(checkpoint) -> dict[str, torch.Tensor]:
+    """Extract weights from an already loaded checkpoint without reading it twice."""
     if not isinstance(checkpoint, Mapping):
         raise TypeError("Checkpoint must be a mapping")
     for field in ("model_state_dict", "model_state", "state_dict", "model"):

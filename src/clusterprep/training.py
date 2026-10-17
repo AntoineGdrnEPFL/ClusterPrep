@@ -51,6 +51,7 @@ from .transfer import (
     validate_transfer_plan,
     prepare_transfer_source,
 )
+from .modular_transfer import ModularTransferConfig, TransferError, initialize_transfer, parse_transfer
 from .experiment_loader import resolve_transfer_splits, audit_transfer_splits
 
 
@@ -67,7 +68,8 @@ class ExperimentConfig(TrainingConfig):
     threshold_grid: list = field(
         default_factory=lambda: [i / 100 for i in range(5, 100, 5)]
     )
-    transfer: TransferConfig | None = None
+    transfer: TransferConfig | ModularTransferConfig | None = None
+    training_phases: list[TransferPhase] = field(default_factory=list)
     seed: int = 42
     size: int = 128
     width: int = 16
@@ -84,14 +86,21 @@ class ExperimentConfig(TrainingConfig):
 
     def __post_init__(self):
         super().__post_init__()
-        if isinstance(self.transfer, dict):
-            object.__setattr__(self, "transfer", TransferConfig(**self.transfer))
-        if self.transfer is not None:
-            if not isinstance(self.transfer, TransferConfig):
-                raise TypeError("transfer must be a TransferConfig or dictionary")
-            self.transfer.__post_init__()
-            if self.task != "rr_rh":
-                raise ValueError("Transfer learning requires task='rr_rh'")
+        object.__setattr__(self, "transfer", parse_transfer(self.transfer))
+        if isinstance(self.transfer, TransferConfig) and self.task != "rr_rh":
+            raise ValueError("Legacy transfer learning requires task='rr_rh'; use sources/mappings for other tasks")
+        if not isinstance(self.training_phases, (list, tuple)):
+            raise ValueError("training_phases must be a list")
+        phases = [TransferPhase(**p) if isinstance(p, dict) else p for p in self.training_phases]
+        if not all(isinstance(p, TransferPhase) for p in phases):
+            raise ValueError("training_phases must contain phase objects")
+        for phase in phases:
+            phase.__post_init__()
+        if len({p.name for p in phases}) != len(phases):
+            raise ValueError("Duplicate training phase names")
+        if phases and isinstance(self.transfer, TransferConfig):
+            raise ValueError("Use either legacy transfer.phases or training_phases, not both")
+        object.__setattr__(self, "training_phases", phases)
         resolve_thresholds(self.thresholds)
         if self.threshold_selection not in {"fixed", "f1", "recall_at_precision"}:
             raise ValueError("threshold_selection : fixed, f1 ou recall_at_precision")
@@ -149,6 +158,12 @@ class ExperimentConfig(TrainingConfig):
             raise ValueError("task doit être de_nde ou rr_rh")
         if self.candidate_policy not in {"positive", "ignore"}:
             raise ValueError("candidate_policy doit être positive ou ignore")
+
+
+def _training_phases(config):
+    if isinstance(getattr(config, "transfer", None), TransferConfig):
+        return config.transfer.phases
+    return getattr(config, "training_phases", [])
 
 
 class _MergeSingletonBatchSampler(BatchSampler):
@@ -547,7 +562,7 @@ class Trainer:
         self.frozen_modules = []
         self.optimizer = (
             None
-            if getattr(config, "transfer", None)
+            if _training_phases(config)
             else build_optimizer(model, config)
         )
         self.scheduler = (
@@ -670,6 +685,12 @@ class Trainer:
             "monitor": getattr(self.config, "monitor", "val_loss"),
             "score": self.stopping.best,
             "phase": phase,
+            "preprocessing": {
+                "size": getattr(self.config, "size", None),
+                "mode": getattr(self.config, "mode", None),
+                "normalization": {"percentile_lo": 30, "percentile_hi": 99, "alpha": 10.0},
+            },
+            "transfer_report": getattr(self, "initialization_report", None),
         }
 
     def fit_transfer(self, train_loader, val_loader, *, run_dir=None, phases=None):
@@ -679,17 +700,19 @@ class Trainer:
         are deliberately absent from this API.
         """
         original = self.config
-        transfer = getattr(original, "transfer", None)
-        if transfer is None:
-            raise ValueError("fit_transfer requires config.transfer")
-        if phases is not None:
-            transfer = replace(transfer, phases=phases)
-        modules = validate_transfer_plan(self.model, transfer)
+        phase_plan = list(phases) if phases is not None else _training_phases(original)
+        if not phase_plan:
+            raise ValueError("fit_transfer requires training_phases or legacy config.transfer.phases")
+        if isinstance(getattr(original, "transfer", None), TransferConfig):
+            modules = validate_transfer_plan(self.model, replace(original.transfer, phases=phase_plan))
+        else:
+            from .transfer import validate_training_phases
+            modules = validate_training_phases(self.model, phase_plan)
         if len(train_loader) < 1:
             raise ValueError("No training batches")
         if original.use_scheduler and any(
             original.warmup_fraction * p.epochs * len(train_loader) == 1
-            for p in transfer.phases
+            for p in phase_plan
         ):
             raise ValueError(
                 "OneCycleLR: warmup_fraction * total_steps must not equal 1 in any phase"
@@ -704,7 +727,7 @@ class Trainer:
         run_dir = Path(run_dir) if run_dir is not None else None
         monitor = getattr(original, "monitor", "val_loss")
         try:
-            for phase in transfer.phases:
+            for phase in phase_plan:
                 self.config = replace(
                     original,
                     epochs=phase.epochs,
@@ -975,7 +998,7 @@ def run_experiment(
     if config.task == "de_nde" and set(class_names) != {"DE", "NDE"}:
         class_names = CLASS_NAMES
     transfer_splits_report = None
-    if config.transfer is not None and config.transfer.reuse_splits:
+    if isinstance(config.transfer, TransferConfig) and config.transfer.reuse_splits:
         resolved, transfer_splits_report = resolve_transfer_splits(
             config.transfer.source_experiment,
             data_info,
@@ -1002,7 +1025,7 @@ def run_experiment(
     _validate_splits(
         data_info, splits, class_names, config.task, config.candidate_policy
     )
-    if config.transfer is not None:
+    if isinstance(config.transfer, TransferConfig):
         audit = audit_transfer_splits(
             config.transfer.source_experiment, data_info, splits
         )
@@ -1094,7 +1117,17 @@ def _run(
         len(output_names),
     ).to(device)
     transfer_report = None
-    if config.transfer is not None:
+    if isinstance(config.transfer, ModularTransferConfig) and config.transfer.enabled:
+        try:
+            transfer_report = initialize_transfer(model, config.transfer, factory)
+        except TransferError as error:
+            _json(run_dir / "transfer.json", error.report)
+            raise
+        _json(run_dir / "transfer.json", transfer_report)
+        for entry in transfer_report["mappings"]:
+            message(f"Transfer {entry['source']}:{entry['from']} -> {entry['to']}: "
+                    f"{entry['status']} ({entry['reason']})", config.verbose)
+    elif isinstance(config.transfer, TransferConfig):
         transfer_report = prepare_transfer_source(model, config, factory)
         transfer_report["split_provenance"] = transfer_splits_report
         _json(run_dir / "transfer.json", transfer_report)
@@ -1109,8 +1142,8 @@ def _run(
             "Un modèle avec BatchNorm requiert batch_size >= 2 et au moins deux exemples train"
         )
     epoch_budget = (
-        sum(p.epochs for p in config.transfer.phases)
-        if config.transfer
+        sum(p.epochs for p in _training_phases(config))
+        if _training_phases(config)
         else config.epochs
     )
     message(
@@ -1284,10 +1317,13 @@ def _run(
         run_dir / "split_distribution.json",
         split_distribution(info, splits, config.task, config.candidate_policy),
     )
-    if config.transfer is not None:
+    trainer.initialization_report = transfer_report
+    if _training_phases(config):
         history = trainer.fit_transfer(loaders[0], loaders[1], run_dir=run_dir)
-        transfer_report.update(trainer.transfer_report)
-        _json(run_dir / "transfer.json", transfer_report)
+        _json(run_dir / "training_phases.json", trainer.transfer_report)
+        if isinstance(config.transfer, TransferConfig):
+            transfer_report.update(trainer.transfer_report)
+            _json(run_dir / "transfer.json", transfer_report)
     else:
         history = trainer.fit(loaders[0], loaders[1], run_dir=run_dir)
     stopping = trainer.stopping
@@ -1398,7 +1434,7 @@ def _run(
             ),
         },
     }
-    if config.transfer is not None:
+    if isinstance(config.transfer, TransferConfig):
         audit = transfer_splits_report["leakage_audit"]
         historical = set().union(*map(set, audit["source_cluster_ids"].values()))
         cohorts = {
@@ -1426,6 +1462,7 @@ def _run(
                 thresholds=config.thresholds,
                 candidate_policy=config.candidate_policy,
             )
+    if transfer_report is not None:
         results["transfer"] = transfer_report
     _json(run_dir / "metrics.json", results)
     _json(run_dir / "status.json", {"status": "completed"})
@@ -1461,7 +1498,7 @@ def run_experiments(
     split_cache = {}
     runs = []
     for index, config in enumerate(configs, 1):
-        if config.transfer is not None and config.transfer.reuse_splits:
+        if isinstance(config.transfer, TransferConfig) and config.transfer.reuse_splits:
             message(f"\nExpérience {index}/{len(configs)}", config.verbose)
             runs.append(
                 run_experiment(
