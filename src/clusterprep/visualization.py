@@ -16,7 +16,9 @@ def plot_history(run_dir, output_path=None):
     fig, axes = plt.subplots(1, 4, figsize=(20, 4), constrained_layout=True)
     for ax, metric, title in zip(axes, ("loss", "macro_f1", "accuracy","roc_auc_macro"), ("Entropie croisée", "F1 macro", "Exactitude", "AUC ROC")):
         for split, label in (("train", "Entraînement"), ("validation", "Validation")):
-            ax.plot([r["epoch"] for r in history], [r[split][metric] for r in history],
+            if not any(r.get(split) is not None for r in history):
+                continue
+            ax.plot([r["epoch"] for r in history], [(r.get(split) or {}).get(metric) for r in history],
                     marker="o", label=label)
         ax.set(xlabel="Époque", ylabel=title)
         previous = None

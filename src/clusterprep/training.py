@@ -1,8 +1,9 @@
-"""Expériences supervisées reproductibles avec sélection sur validation seule."""
+"""Expériences supervisées, avec sélection sur validation ou durée fixe."""
 
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 import csv
+import copy
 import hashlib
 import importlib.metadata
 import json
@@ -53,6 +54,7 @@ from .transfer import (
 )
 from .modular_transfer import ModularTransferConfig, TransferError, initialize_transfer, parse_transfer
 from .experiment_loader import resolve_transfer_splits, audit_transfer_splits
+from .cross_validation import CrossValidationConfig, parse_cross_validation
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,7 @@ class ExperimentConfig(TrainingConfig):
     )
     transfer: TransferConfig | ModularTransferConfig | None = None
     training_phases: list[TransferPhase] = field(default_factory=list)
+    cross_validation: CrossValidationConfig | None = None
     seed: int = 42
     size: int = 128
     width: int = 16
@@ -86,6 +89,7 @@ class ExperimentConfig(TrainingConfig):
 
     def __post_init__(self):
         super().__post_init__()
+        object.__setattr__(self, "cross_validation", parse_cross_validation(self.cross_validation))
         object.__setattr__(self, "transfer", parse_transfer(self.transfer))
         if isinstance(self.transfer, TransferConfig) and self.task != "rr_rh":
             raise ValueError("Legacy transfer learning requires task='rr_rh'; use sources/mappings for other tasks")
@@ -205,15 +209,16 @@ def _seed_worker(worker_id):
 
 
 def _validate_splits(
-    info, splits, class_names, task="de_nde", candidate_policy="positive"
+    info, splits, class_names, task="de_nde", candidate_policy="positive",
+    *, allow_empty_validation=False, allow_empty_test=False,
 ):
     if len(class_names) < 2 or len(set(class_names)) != len(class_names):
         raise ValueError("Au moins deux classes distinctes requises")
     if len(splits) != 3:
         raise ValueError("Trois splits train/validation/test attendus")
     seen = set()
-    for keys in splits:
-        if not keys or len(keys) != len(set(keys)):
+    for index, keys in enumerate(splits):
+        if (not keys and not (index == 1 and allow_empty_validation) and not (index == 2 and allow_empty_test)) or len(keys) != len(set(keys)):
             raise ValueError("Splits non vides et sans clés dupliquées requis")
         clusters = set()
         for key in keys:
@@ -510,6 +515,8 @@ def _record_history(run_dir, record):
         if key in record:
             flat[key] = record[key]
     for prefix, metrics in (("train", record["train"]), ("val", record["validation"])):
+        if metrics is None:
+            continue
         flat.update(
             {
                 f"{prefix}_{k}": v
@@ -610,11 +617,19 @@ class Trainer:
             description=description,
         )
 
-    def fit(self, train_loader, val_loader, *, run_dir=None, phase=None):
-        """Entraîne puis restaure le meilleur modèle, même sans arrêt anticipé.
+    def fit(self, train_loader, val_loader=None, *, run_dir=None, phase=None,
+            selection="validation", epoch_callback=None):
+        """Restaure le meilleur modèle sur validation, ou garde la dernière époque.
 
+        Sans val_loader (ou avec un loader vide), entraîne exactement epochs fois.
         Créer un Trainer et un modèle neufs pour chaque expérience.
         """
+        if selection not in {"validation", "last_epoch"}:
+            raise ValueError("selection must be validation or last_epoch")
+        self.has_validation = val_loader is not None and len(val_loader) > 0
+        self.select_last = selection == "last_epoch" or not self.has_validation
+        if not self.has_validation and getattr(self.config, "threshold_selection", "fixed") != "fixed":
+            raise ValueError("Sans validation, threshold_selection doit être fixed")
         history = []
         if run_dir is not None:
             run_dir = Path(run_dir)
@@ -623,14 +638,14 @@ class Trainer:
             started = time.perf_counter()
             if run_dir is None:
                 train, _ = self.train_one_epoch(train_loader)
-                validation, _ = self.evaluate(val_loader)
+                validation, val_predictions = self.evaluate(val_loader) if self.has_validation else (None, [])
             else:
                 train, _ = self.train_one_epoch(
                     train_loader, f"Époque {epoch}/{self.config.epochs} · train"
                 )
-                validation, _ = self.evaluate(
+                validation, val_predictions = self.evaluate(
                     val_loader, f"Époque {epoch}/{self.config.epochs} · validation"
-                )
+                ) if self.has_validation else (None, [])
             record = {
                 "epoch": epoch,
                 "seconds": time.perf_counter() - started,
@@ -647,8 +662,15 @@ class Trainer:
                     },
                 )
             history.append(record)
+            if epoch_callback is not None:
+                epoch_callback(record, val_predictions)
             if run_dir is not None:
                 _record_history(run_dir, record)
+            if self.select_last:
+                self.best_epoch = epoch  # Selected epoch, retained for artifact compatibility.
+                if getattr(self.config, "verbose", False):
+                    message(f"Époque {epoch:03d}/{self.config.epochs} | loss train={train['loss']:.4f} | durée fixe", True)
+                continue
             key = getattr(self.config, "monitor", "val_loss").removeprefix("val_")
             if validation[key] is None:
                 raise ValueError(f"Métrique val_{key} non définie ; utiliser val_loss")
@@ -669,7 +691,10 @@ class Trainer:
                 self.stopped_early = True
                 message("Arrêt anticipé.", getattr(self.config, "verbose", False))
                 break
-        self.stopping.restore(self.model)
+        if not self.select_last:
+            self.stopping.restore(self.model)
+        elif run_dir is not None:
+            torch.save(self._checkpoint(self.best_epoch, phase), run_dir / "best.pt")
         return history
 
     def _checkpoint(self, epoch, phase=None):
@@ -682,7 +707,8 @@ class Trainer:
             "config": asdict(self.config),
             "class_names": list(self.class_names),
             "epoch": epoch,
-            "monitor": getattr(self.config, "monitor", "val_loss"),
+            "selection": "last_epoch" if self.select_last else "validation",
+            "monitor": getattr(self.config, "monitor", "val_loss") if not self.select_last else None,
             "score": self.stopping.best,
             "phase": phase,
             "preprocessing": {
@@ -693,11 +719,12 @@ class Trainer:
             "transfer_report": getattr(self, "initialization_report", None),
         }
 
-    def fit_transfer(self, train_loader, val_loader, *, run_dir=None, phases=None):
+    def fit_transfer(self, train_loader, val_loader, *, run_dir=None, phases=None,
+                     selection="validation", epoch_callback=None):
         """Train phases through fit(), restoring each best before the next phase.
 
-        Final selection compares phase bests on validation only. Test loaders
-        are deliberately absent from this API.
+        With validation, compare phase bests. Without it, retain the final phase's
+        last epoch. Test loaders are deliberately absent from this API.
         """
         original = self.config
         phase_plan = list(phases) if phases is not None else _training_phases(original)
@@ -749,7 +776,12 @@ class Trainer:
                 phase_dir = run_dir / "phases" / phase.name if run_dir else None
                 offset = len(history)
                 records = self.fit(
-                    train_loader, val_loader, run_dir=phase_dir, phase=phase.name
+                    train_loader, val_loader, run_dir=phase_dir, phase=phase.name,
+                    selection=selection,
+                    epoch_callback=(
+                        lambda record, predictions: epoch_callback(
+                            {**record, "epoch": offset + record["epoch"]}, predictions)
+                    ) if epoch_callback else None,
                 )
                 phase_report = {
                     **asdict(phase),
@@ -758,7 +790,8 @@ class Trainer:
                     "epochs_ran": len(records),
                     "best_epoch": self.best_epoch,
                     "global_best_epoch": offset + self.best_epoch,
-                    "monitor": monitor,
+                    "monitor": monitor if not self.select_last else None,
+                    "selection": "last_epoch" if self.select_last else "validation",
                     "monitor_best": self.stopping.best,
                     "stopped_early": self.stopped_early,
                     "validation": records[self.best_epoch - 1]["validation"],
@@ -772,14 +805,14 @@ class Trainer:
                     if run_dir:
                         _record_history(run_dir, global_record)
                 score = self.stopping.best
-                better = best_score is None or (
+                better = self.select_last or best_score is None or (
                     score < best_score if monitor == "val_loss" else score > best_score
                 )
                 if better:
                     best_score, selected_phase = score, phase.name
                     selected_epoch = offset + self.best_epoch
                     selected_stopping = self.stopping
-                    selected_state = self.stopping.best_state_dict
+                    selected_state = self.stopping.best_state_dict if not self.select_last else copy.deepcopy(self.model.state_dict())
                     if run_dir:
                         checkpoint = torch.load(
                             phase_dir / "best.pt", map_location="cpu", weights_only=True
@@ -797,7 +830,7 @@ class Trainer:
             self.transfer_report = {
                 "phases": reports,
                 "selected_phase": selected_phase,
-                "selection": monitor,
+                "selection": monitor if not self.select_last else "last_epoch",
                 "epochs_ran": len(history),
             }
             return history
@@ -985,6 +1018,8 @@ def run_experiment(
     model_factory=None,
     input_adapter=None,
     split_metadata=None,
+    use_val=True,
+    _cv_execution=None,
 ):
     """Entraîne un modèle neuf, restaure son meilleur état, puis évalue le test une fois.
 
@@ -993,12 +1028,14 @@ def run_experiment(
     input_adapter(batch) peut remplacer cette entrée par un tenseur, tuple ou dict.
     Chaque appel crée un répertoire unique et ne remplace aucune expérience.
     """
+    if not isinstance(use_val, bool):
+        raise ValueError("use_val doit être booléen")
     data_info = merge_cluster_labels(data_info)
     class_names = ("RR", "RH") if config.task == "rr_rh" else tuple(class_names)
     if config.task == "de_nde" and set(class_names) != {"DE", "NDE"}:
         class_names = CLASS_NAMES
     transfer_splits_report = None
-    if isinstance(config.transfer, TransferConfig) and config.transfer.reuse_splits:
+    if _cv_execution is None and isinstance(config.transfer, TransferConfig) and config.transfer.reuse_splits:
         resolved, transfer_splits_report = resolve_transfer_splits(
             config.transfer.source_experiment,
             data_info,
@@ -1019,13 +1056,29 @@ def run_experiment(
             task=config.task,
             candidate_policy=config.candidate_policy,
             seed=config.seed,
+            use_val=use_val,
         )
         splits = _unique_cluster_splits(data_info, splits)
     splits = tuple(list(keys) for keys in splits)
     _validate_splits(
-        data_info, splits, class_names, config.task, config.candidate_policy
+        data_info, splits, class_names, config.task, config.candidate_policy,
+        allow_empty_validation=True,
+        allow_empty_test=_cv_execution is not None and _cv_execution["stage"] == "fold",
     )
-    if isinstance(config.transfer, TransferConfig):
+    if config.cross_validation is not None and config.cross_validation.enabled and _cv_execution is None:
+        from .cross_validation import run_cross_validation
+        return run_cross_validation(
+            data_info, config, output_dir, splits=splits, class_names=class_names,
+            model_factory=model_factory, input_adapter=input_adapter, split_metadata=split_metadata,
+        )
+    if not use_val:
+        splits = (splits[0] + splits[1], [], splits[2])
+    has_validation = bool(splits[1])
+    if not has_validation:
+        if config.threshold_selection != "fixed":
+            raise ValueError("Sans validation, threshold_selection doit être fixed")
+        config = replace(config, use_early_stopping=False)
+    if _cv_execution is None and isinstance(config.transfer, TransferConfig):
         audit = audit_transfer_splits(
             config.transfer.source_experiment, data_info, splits
         )
@@ -1041,7 +1094,9 @@ def run_experiment(
             [k for k in keys if data_info[k].get("chandra_path")] for keys in splits
         )
     _validate_splits(
-        data_info, splits, class_names, config.task, config.candidate_policy
+        data_info, splits, class_names, config.task, config.candidate_policy,
+        allow_empty_validation=not has_validation,
+        allow_empty_test=_cv_execution is not None and _cv_execution["stage"] == "fold",
     )
     class_counts = compute_task_counts(
         data_info,
@@ -1067,7 +1122,7 @@ def run_experiment(
                 "Chaque label doit également avoir " "au moins un exemple négatif"
             )
     run_id = f"{config.name}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:8]}"
-    run_dir = Path(output_dir) / run_id
+    run_dir = Path(_cv_execution["run_dir"]) if _cv_execution else Path(output_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     _json(run_dir / "status.json", {"status": "running"})
     try:
@@ -1086,6 +1141,7 @@ def run_experiment(
             input_adapter,
             split_metadata,
             transfer_splits_report,
+            _cv_execution,
         )
     except Exception as error:
         _json(run_dir / "status.json", {"status": "failed", "error": str(error)})
@@ -1104,6 +1160,7 @@ def _run(
     input_adapter=None,
     split_metadata=None,
     transfer_splits_report=None,
+    cv_execution=None,
 ):
     started = time.perf_counter()
     random.seed(config.seed)
@@ -1152,7 +1209,7 @@ def _run(
         f"Train/validation/test : {'/'.join(str(len(k)) for k in splits)} amas ; "
         f"augmentation={'24 variantes' if config.augment else 'non'} ; "
         f"{epoch_budget} époques maximum, early stopping={config.monitor} "
-        f"(patience={config.patience}).\nRésultats : {run_dir}",
+        f"(patience={config.patience}, actif={config.use_early_stopping}).\nRésultats : {run_dir}",
         config.verbose,
     )
     preparation = None
@@ -1318,21 +1375,49 @@ def _run(
         split_distribution(info, splits, config.task, config.candidate_policy),
     )
     trainer.initialization_report = transfer_report
+    fit_options = {}
+    if cv_execution:
+        fit_options["selection"] = "last_epoch"
+        if cv_execution["stage"] == "fold":
+            predictions_dir = run_dir / "validation_epochs"
+            predictions_dir.mkdir()
+            fit_options["epoch_callback"] = lambda record, predictions: _json(
+                predictions_dir / f"epoch_{record['epoch']}.json", predictions)
     if _training_phases(config):
-        history = trainer.fit_transfer(loaders[0], loaders[1], run_dir=run_dir)
+        history = trainer.fit_transfer(loaders[0], loaders[1], run_dir=run_dir, **fit_options)
         _json(run_dir / "training_phases.json", trainer.transfer_report)
         if isinstance(config.transfer, TransferConfig):
             transfer_report.update(trainer.transfer_report)
             _json(run_dir / "transfer.json", transfer_report)
     else:
-        history = trainer.fit(loaders[0], loaders[1], run_dir=run_dir)
+        history = trainer.fit(loaders[0], loaders[1], run_dir=run_dir, **fit_options)
+    if cv_execution:
+        metadata["execution"] = cv_execution
+        _json(run_dir / "config.json", metadata)
+        if cv_execution["stage"] == "final":
+            checkpoint = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
+            checkpoint["cross_validation"] = cv_execution["cross_validation"]
+            checkpoint["split_provenance"] = split_manifest
+            torch.save(checkpoint, run_dir / "best.pt")
+        if not cv_execution["evaluate_test"]:
+            _json(run_dir / "metrics.json", {
+                "schema_version": 2, "run_id": run_dir.name, "config": asdict(config),
+                "class_names": list(class_names), "epochs_ran": len(history),
+                "best_epoch": trainer.best_epoch, "stopped_early": False,
+                "selection": "last_epoch", "monitor_best": None,
+                "validation": history[-1]["validation"], "test": None,
+                "split_counts": dict(zip(("train", "validation", "test"), map(len, splits))),
+            })
+            _json(run_dir / "status.json", {"status": "completed", "test_evaluated": False})
+            return run_dir
     stopping = trainer.stopping
     best_epoch, stopped = trainer.best_epoch, trainer.stopped_early
-    val_metrics, val_predictions = trainer.evaluate(
-        loaders[1], description="Validation finale"
+    val_metrics, val_predictions = (
+        trainer.evaluate(loaders[1], description="Validation finale")
+        if splits[1] else (None, [])
     )
     threshold_selection = None
-    if config.task == "rr_rh":
+    if config.task == "rr_rh" and splits[1]:
         threshold_selection = select_multilabel_thresholds(
             [p["label"] for p in val_predictions],
             [p["probabilities"] for p in val_predictions],
@@ -1370,6 +1455,32 @@ def _run(
         )
         checkpoint["evaluation"] = threshold_selection
         torch.save(checkpoint, run_dir / "best.pt")
+    if config.task == "rr_rh" and not splits[1]:
+        threshold_selection = {
+            "method": "fixed", "selection_split": None,
+            "thresholds": resolve_thresholds(config.thresholds),
+            "grid": [], "min_precision": None, "per_label": {},
+        }
+        _json(run_dir / "thresholds.json", threshold_selection)
+        metadata["evaluation"] = threshold_selection
+        _json(run_dir / "config.json", metadata)
+        checkpoint = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
+        checkpoint["evaluation"] = threshold_selection
+        torch.save(checkpoint, run_dir / "best.pt")
+    if cv_execution and cv_execution.get("cross_validation", {}).get("threshold_selection"):
+        threshold_selection = cv_execution["cross_validation"]["threshold_selection"]
+        _json(run_dir / "thresholds.json", threshold_selection)
+        metadata["evaluation"] = threshold_selection
+        _json(run_dir / "config.json", metadata)
+        checkpoint = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
+        checkpoint["evaluation"] = threshold_selection
+        torch.save(checkpoint, run_dir / "best.pt")
+    if cv_execution and cv_execution["stage"] == "final":
+        # Reload only after all metadata and selected thresholds have been saved.
+        # Keep optimizer tensors on CPU; only model weights need the accelerator.
+        checkpoint = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
+        trainer.model.load_state_dict(checkpoint["model_state_dict"])
+        del checkpoint
     test_metrics, test_predictions = trainer.evaluate(
         loaders[2], description="Test final"
     )
@@ -1394,6 +1505,7 @@ def _run(
         "epochs_ran": len(history),
         "stopped_early": stopped,
         "monitor_best": stopping.best,
+        "selection": "validation" if splits[1] else "last_epoch",
         "seconds": time.perf_counter() - started,
         "preprocessing": preparation,
         "split_counts": dict(zip(("train", "validation", "test"), map(len, splits))),
@@ -1434,7 +1546,7 @@ def _run(
             ),
         },
     }
-    if isinstance(config.transfer, TransferConfig):
+    if isinstance(config.transfer, TransferConfig) and cv_execution is None:
         audit = transfer_splits_report["leakage_audit"]
         historical = set().union(*map(set, audit["source_cluster_ids"].values()))
         cohorts = {
@@ -1485,12 +1597,18 @@ def run_experiments(
     split_seed=42,
     test_size=0.2,
     val_size=0.2,
+    use_val=True,
     n_folds=None,
     fold_index=0,
     model_factory=None,
     input_adapter=None,
 ):
     """Suite séquentielle partageant les splits, indépendamment des graines modèle."""
+    if not isinstance(use_val, bool):
+        raise ValueError("use_val doit être booléen")
+    if not 0 <= val_size < 1:
+        raise ValueError("val_size doit être dans [0, 1[")
+    use_val = use_val and val_size > 0
     configs = list(configs)
     if not configs:
         raise ValueError("Au moins une configuration d'expérience requise")
@@ -1507,6 +1625,7 @@ def run_experiments(
                     output_dir,
                     class_names=class_names,
                     splits=supplied_splits,
+                    use_val=use_val,
                     model_factory=model_factory,
                     input_adapter=input_adapter,
                 )
@@ -1525,6 +1644,7 @@ def run_experiments(
                 candidate_policy=config.candidate_policy,
                 test_size=test_size,
                 val_size=val_size,
+                use_val=use_val,
                 n_folds=n_folds,
                 fold_index=fold_index,
             )
@@ -1542,6 +1662,7 @@ def run_experiments(
                 output_dir,
                 class_names=class_names,
                 splits=splits,
+                use_val=use_val,
                 model_factory=model_factory,
                 input_adapter=input_adapter,
                 split_metadata=(
@@ -1549,7 +1670,8 @@ def run_experiments(
                         "split_seed": split_seed,
                         "n_folds": n_folds,
                         "fold_index": fold_index,
-                        "val_size": val_size,
+                        "val_size": val_size if use_val else 0,
+                        "use_val": use_val,
                         "test_size": test_size,
                     }
                     if supplied_splits is None

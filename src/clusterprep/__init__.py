@@ -60,3 +60,6 @@ __all__ += ["TransferConfig", "TransferPhase", "validate_transfer_modules",
             "transfer_model_modules", "load_pretrained_modules_from_state",
             "read_checkpoint_state", "configure_transfer_phase", "set_transfer_train_mode",
             "resolve_transfer_splits"]
+
+from .cross_validation import CrossValidationConfig, build_internal_folds, aggregate_curves
+__all__ += ["CrossValidationConfig", "build_internal_folds", "aggregate_curves"]

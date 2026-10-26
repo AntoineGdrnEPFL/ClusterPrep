@@ -72,6 +72,31 @@ Les splits sont stratifiés et regroupés par `cluster_id`, avant augmentation.
 Les petites classes peuvent empêcher une stratification ; l'erreur est explicite.
 `n_folds=10, fold_index=0` sélectionne un fold de test et remplace `test_size`.
 `val_size` reste la fraction du jeu complet (par défaut 20 %).
+
+Pour entraîner sans validation, définir `"use_val": false` dans `split`
+(ou `"val_size": 0`) et choisir `epochs` dans l'expérience :
+
+```json
+"split": {"split_seed": 42, "test_size": 0.2, "use_val": false}
+```
+
+Dans ce mode, tout le pool hors test sert à l'entraînement. Si `split.splits`
+est fourni, les listes train et validation sont concaténées, dans cet ordre,
+sans modifier le test. L'arrêt anticipé est automatiquement désactivé et le
+modèle de la dernière époque est conservé. Avec des phases, chaque phase exécute
+son propre nombre d'époques et la dernière phase fournit le modèle final.
+Le test est évalué après l'entraînement, sans intervenir dans la sélection.
+En RR/RH, `threshold_selection` doit rester `"fixed"`.
+
+Le fichier `best.pt` conserve son nom pour les outils existants mais contient
+ici l'état final, identifié par `selection: "last_epoch"` ; `best_epoch` désigne
+alors la dernière époque. Les métriques de validation et `monitor_best` valent
+`null`, et le CSV de prédictions validation ne contient que son en-tête.
+L'assistant `createconfig` accepte une fraction validation de zéro.
+Un [exemple sans validation](configs/train_test_only/train_test.json) est disponible.
+La réintégration de la validation change le jeu d'entraînement : ce protocole
+ne reproduit donc pas strictement une expérience historique avec validation.
+
 Chaque amas d'entraînement possède 24 variantes : 12 rotations par pas de
 30 degrés, avec ou sans retournement horizontal, appliquées à tous les canaux.
 Ne pas activer `augment` pour la validation ou le test.
@@ -251,3 +276,10 @@ schémas supportés et les limites scientifiques des annotations.
 Le transfert multi-phase utilise les API d'entraînement existantes. Voir le
 [guide de transfert](TRANSFER_LEARNING.md), la [configuration ImageCNN](examples/transfer_image_cnn.json)
 et le [pilote comparatif](examples/transfer_pilot.py).
+
+## Validation croisée interne
+
+Une section `cross_validation` dans chaque expérience permet de choisir les époques
+sur des folds internes, puis de réentraîner un nouveau modèle sur tout le train
+externe et d'évaluer le test une seule fois. Les phases de transfert peuvent être
+comparées par combinaisons de durées. Voir le [guide et les configurations JSON](CROSS_VALIDATION.md).

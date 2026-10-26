@@ -26,17 +26,35 @@ def multilabel_stratum(info, candidate_policy="positive"):
 def _iterative(strata, *, seed, n_folds=None, test_size=None):
     counts = dict(Counter(strata))
     try:
-        from iterstrat.ml_stratifiers import MultilabelStratifiedKFold, MultilabelStratifiedShuffleSplit
+        from iterstrat.ml_stratifiers import (
+            MultilabelStratifiedKFold,
+            MultilabelStratifiedShuffleSplit,
+        )
     except ImportError as error:
-        raise ValueError(f"Stratification RR/RH impossible avec effectifs {counts}; installer iterative-stratification") from error
+        raise ValueError(
+            f"Stratification RR/RH impossible avec effectifs {counts}; installer iterative-stratification"
+        ) from error
     # Distinguish known positive, known negative and unknown for each label.
-    y = np.asarray([[int(s[j] == value) for j in range(2) for value in ("1", "0", "?")]
-                    for s in strata])
+    y = np.asarray(
+        [
+            [int(s[j] == value) for j in range(2) for value in ("1", "0", "?")]
+            for s in strata
+        ]
+    )
     if len(strata) < (n_folds or 3):
-        raise ValueError(f"Pas assez de clusters pour la stratification RR/RH: {counts}")
-    warnings.warn(f"Stratification RR/RH itérative : combinaisons rares, effectifs {counts}")
-    splitter = (MultilabelStratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
-                if n_folds else MultilabelStratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=seed))
+        raise ValueError(
+            f"Pas assez de clusters pour la stratification RR/RH: {counts}"
+        )
+    warnings.warn(
+        f"Stratification RR/RH itérative : combinaisons rares, effectifs {counts}"
+    )
+    splitter = (
+        MultilabelStratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+        if n_folds
+        else MultilabelStratifiedShuffleSplit(
+            n_splits=1, test_size=test_size, random_state=seed
+        )
+    )
     return list(splitter.split(np.zeros(len(y)), y))
 
 
@@ -50,15 +68,18 @@ def split_data_keys(
     fold_index=0,
     task="de_nde",
     candidate_policy="positive",
+    use_val=True,
 ):
     """Sépare les données par cluster, avec un fold de test optionnel."""
     if mode not in {"raw", "pair", "multimodal"}:
         raise ValueError("mode doit être raw, pair ou multimodal")
-    if (
-        not 0 < test_size < 1
-        or not 0 < val_size < 1
-        or (n_folds is None and test_size + val_size >= 1)
-    ):
+    if not isinstance(use_val, bool):
+        raise ValueError("use_val doit être booléen")
+    if not 0 <= val_size < 1:
+        raise ValueError("val_size doit être dans [0, 1[")
+    use_val = use_val and val_size > 0
+    if (not 0 < test_size < 1
+        or (use_val and n_folds is None and test_size + val_size >= 1)):
         raise ValueError("test_size + val_size doit être < 1")
     if n_folds is not None:
         if not isinstance(n_folds, int) or n_folds < 2:
@@ -143,6 +164,13 @@ def split_data_keys(
         train_val_ids = [cluster_ids[i] for i in train_val_indices]
         test_ids = [cluster_ids[i] for i in test_indices]
 
+    if not use_val:
+        return (
+            [key for cid in train_val_ids for key in keys_by_cluster[cid]],
+            [],
+            [key for cid in test_ids for key in keys_by_cluster[cid]],
+        )
+
     # La validation est extraite du pool train, sans toucher au fold de test.
     if not train_val_ids or not cluster_ids:
         raise ValueError("Aucun cluster disponible pour l’entraînement")
@@ -173,12 +201,16 @@ def _safe_split(ids, *, stratify, task="de_nde", **kwargs):
     except ValueError as error:
         if task == "rr_rh":
             try:
-                a, b = _iterative(stratify, seed=kwargs["random_state"], test_size=kwargs["test_size"])[0]
+                a, b = _iterative(
+                    stratify, seed=kwargs["random_state"], test_size=kwargs["test_size"]
+                )[0]
                 if not len(a) or not len(b):
                     raise ValueError("split vide")
                 return [ids[i] for i in a], [ids[i] for i in b]
             except ValueError as fallback_error:
-                raise ValueError(f"Stratification RR/RH impossible; effectifs {dict(Counter(stratify))}: {fallback_error}") from error
+                raise ValueError(
+                    f"Stratification RR/RH impossible; effectifs {dict(Counter(stratify))}: {fallback_error}"
+                ) from error
         if len(ids) < 3:
             raise ValueError(
                 "Pas assez de clusters pour trois splits non vides"
@@ -194,18 +226,33 @@ def split_distribution(data_info, splits, task="de_nde", candidate_policy="posit
     result = {"task": task, "candidate_policy": candidate_policy, "labels": {}}
     for name, keys in zip(("train", "validation", "test"), splits):
         unique = {info[k]["cluster_id"]: info[k] for k in keys}
-        counts = dict.fromkeys(("00", "10", "01", "11") if task == "rr_rh" else ("DE", "NDE"), 0)
+        counts = dict.fromkeys(
+            ("00", "10", "01", "11") if task == "rr_rh" else ("DE", "NDE"), 0
+        )
         for item in unique.values():
-            stratum = multilabel_stratum(item, candidate_policy) if task == "rr_rh" else ("DE" if "DE" in labels_for(item) else "NDE")
+            stratum = (
+                multilabel_stratum(item, candidate_policy)
+                if task == "rr_rh"
+                else ("DE" if "DE" in labels_for(item) else "NDE")
+            )
             counts[stratum] = counts.get(stratum, 0) + 1
         result[name] = counts
         if task == "rr_rh":
-            pairs = [task_target(item, task, candidate_policy) for item in unique.values()]
+            pairs = [
+                task_target(item, task, candidate_policy) for item in unique.values()
+            ]
             result["labels"][name] = {}
             for j, label in enumerate(("RR", "RH")):
                 pos = sum(int(t[j] == 1 and m[j]) for t, m in pairs)
                 neg = sum(int(t[j] == 0 and m[j]) for t, m in pairs)
-                result["labels"][name][label] = {"positive": pos, "negative": neg, "unknown": len(pairs)-pos-neg, "roc_auc_defined": bool(pos and neg)}
-                if not pos or not neg:
-                    warnings.warn(f"{name}/{label}: ROC-AUC indéfinie ({pos} positifs, {neg} négatifs connus)")
+                result["labels"][name][label] = {
+                    "positive": pos,
+                    "negative": neg,
+                    "unknown": len(pairs) - pos - neg,
+                    "roc_auc_defined": bool(pos and neg),
+                }
+                if keys and (not pos or not neg):
+                    warnings.warn(
+                        f"{name}/{label}: ROC-AUC indéfinie ({pos} positifs, {neg} négatifs connus)"
+                    )
     return result

@@ -143,9 +143,20 @@ def _read_predictions(path, split, manifest, config, thresholds, issues):
     required = {"key", "cluster_id", "has_chandra"} | {
         f"{kind}_{label}" for kind in ("label", "probability") for label in LABELS
     }
-    if not rows or not required <= fields:
+    if (
+        not rows and (split != "validation" or manifest[split])
+    ) or not required <= fields:
         raise ValueError(
             f"{path}: CSV RR/RH vide ou colonnes manquantes : {sorted(required-fields)}"
+        )
+    if not rows:
+        return Predictions(
+            np.empty(0, dtype=str),
+            np.empty(0, dtype=str),
+            np.empty((0, 2)),
+            np.empty((0, 2)),
+            np.empty((0, 2), dtype=bool),
+            np.empty(0, dtype=bool),
         )
     keys = np.array([r["key"] for r in rows])
     ids = np.array([r["cluster_id"] for r in rows])
@@ -299,7 +310,16 @@ def load_run(directory):
     groups = []
     for split in ("train", "validation", "test"):
         keys = splits.get(split)
-        if not isinstance(keys, list) or not keys or len(keys) != len(set(keys)):
+        if (
+            not isinstance(keys, list)
+            # or (not keys and split != "validation")
+            or len(keys) != len(set(keys))
+        ):
+            print(f"not isinstance(keys, list) : {not isinstance(keys, list)}")
+            print(
+                f"not keys and split != 'validation' : {not keys and split != "validation"}"
+            )
+            print(f"len(keys) != len(set(keys)) : {len(keys) != len(set(keys))}")
             raise ValueError(f"{path.name}: split {split} vide, absent ou dupliqué")
         if any(k not in samples or "cluster_id" not in samples[k] for k in keys):
             raise ValueError(f"{path.name}: manifeste incomplet pour {split}")
@@ -855,7 +875,7 @@ def plot_learning_history(run):
         found = False
         for split in ("train", "validation"):
             pairs = [
-                (record["epoch"], record.get(split, {}).get(metric))
+                (record["epoch"], (record.get(split) or {}).get(metric))
                 for record in run.history
             ]
             pairs = [(x, y) for x, y in pairs if y is not None]

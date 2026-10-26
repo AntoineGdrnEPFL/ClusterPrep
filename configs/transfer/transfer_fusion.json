@@ -1,0 +1,60 @@
+{
+    "data_dir": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified",
+    "output_dir": "/Users/antoinegdrn/PH_Project_I/results/transfer/dual_encoder_cnn_multimodal_DE_NDE_Transfer",
+    "class_names": [
+        "DE",
+        "NDE",
+        "RR",
+        "RH",
+        "cRR",
+        "cRH"
+    ],
+    "comparison_cohort": "all",
+    "experiments": [
+        {
+            "name": "fusion_cnn_multimodal_RR_RH_Transfer",
+            "task": "rr_rh",
+            "model": "fusion",
+            "mode": "multimodal",
+            "size": 128,
+            "candidate_policy": "positive",
+            "device": "mps",
+            "use_scheduler": true,
+            "use_mixup": true,
+            "transfer": {
+                "source_experiment": "/Users/antoinegdrn/PH_Project_I/results/clusterprep/fusion/fusion_multimodal-20261003T161657-bd5fb3ca",
+                "reuse_splits": true,
+                "add_new_clusters": true,
+                "allow_subset": false,
+                "seed": 42,
+                "module_prefixes": {
+                    "radio": "radio",
+                    "xray": "chandra"
+                },
+                "phases": [
+                    {
+                        "name": "chandra_encoder_and_classifier",
+                        "epochs": 25,
+                        "learning_rates": {
+                            "xray": 1e-4,
+                            "head": 1e-4
+                        },
+                        "weight_decay": 0.001,
+                        "patience": 5
+                    },
+                    {
+                        "name": "full_finetuning",
+                        "epochs": 25,
+                        "learning_rates": {
+                            "radio": 0.00001,
+                            "xray": 0.00001,
+                            "head": 0.0001
+                        },
+                        "weight_decay": 0.001,
+                        "patience": 5
+                    }
+                ]
+            }
+        }
+    ]
+}

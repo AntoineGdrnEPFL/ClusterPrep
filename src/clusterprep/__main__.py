@@ -1,4 +1,5 @@
 """Lancement d'une suite décrite en JSON : python -m clusterprep suite.json."""
+
 import argparse
 from dataclasses import replace
 import json
@@ -9,21 +10,37 @@ from .io import get_data_info_dict, CLASS_NAMES
 
 def preprocessing_main(argv):
     from .processed import prepare_processed
-    parser = argparse.ArgumentParser(description="Préparer les FITS sans entraîner de modèle")
+
+    parser = argparse.ArgumentParser(
+        description="Préparer les FITS sans entraîner de modèle"
+    )
     parser.add_argument("data_dir", type=Path)
     parser.add_argument("--processed-dir", type=Path, default=Path("processed"))
-    parser.add_argument("--mode", choices=("raw", "pair", "multimodal"), default="multimodal")
+    parser.add_argument(
+        "--mode", choices=("raw", "pair", "multimodal"), default="multimodal"
+    )
     parser.add_argument("--size", type=int, default=128)
     parser.add_argument("--class-names", nargs="+", default=list(CLASS_NAMES))
-    parser.add_argument("--force", action="store_true", help="Recalculer même les FITS valides")
+    parser.add_argument(
+        "--force", action="store_true", help="Recalculer même les FITS valides"
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
     if args.size < 1:
         parser.error("--size doit être positif")
     info = get_data_info_dict(args.data_dir, args.class_names)
-    keys = [k for k, item in info.items() if args.mode != "pair" or item.get("chandra_path")]
-    counts = prepare_processed(info, keys, args.mode, args.size, args.processed_dir,
-                               verbose=not args.quiet, force=args.force)
+    keys = [
+        k for k, item in info.items() if args.mode != "pair" or item.get("chandra_path")
+    ]
+    counts = prepare_processed(
+        info,
+        keys,
+        args.mode,
+        args.size,
+        args.processed_dir,
+        verbose=not args.quiet,
+        force=args.force,
+    )
     print(json.dumps(counts, indent=2))
 
 
@@ -31,7 +48,10 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "createconfig":
         from .config_wizard import create_config
-        parser = argparse.ArgumentParser(description="Créer une configuration d'entraînement interactivement")
+
+        parser = argparse.ArgumentParser(
+            description="Créer une configuration d'entraînement interactivement"
+        )
         parser.add_argument("--output", type=Path, help="Fichier JSON à créer")
         args = parser.parse_args(argv[1:])
         create_config(args.output)
@@ -41,11 +61,18 @@ def main(argv=None):
         return
     from .training import ExperimentConfig, run_experiments, compare_experiments
     from .models import list_models
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("config", type=Path, nargs="?")
-    parser.add_argument("--list-models", action="store_true", help="Afficher les modèles disponibles")
-    parser.add_argument("--quiet", action="store_true", help="Masquer les barres et résumés")
-    parser.add_argument("--processed-dir", type=Path, help="Dossier commun des FITS prétraités")
+    parser.add_argument(
+        "--list-models", action="store_true", help="Afficher les modèles disponibles"
+    )
+    parser.add_argument(
+        "--quiet", action="store_true", help="Masquer les barres et résumés"
+    )
+    parser.add_argument(
+        "--processed-dir", type=Path, help="Dossier commun des FITS prétraités"
+    )
     args = parser.parse_args(argv)
     if args.list_models:
         print(json.dumps(list_models(), indent=2))
@@ -63,8 +90,13 @@ def main(argv=None):
     if not configs:
         parser.error("La suite doit contenir au moins une expérience")
     output = Path(spec.get("output_dir", "results/experiments"))
-    runs = run_experiments(info, configs, output, class_names=classes or CLASS_NAMES,
-                           **spec.get("split", {}))
+    runs = run_experiments(
+        info,
+        configs,
+        output,
+        class_names=classes or CLASS_NAMES,
+        **spec.get("split", {}),
+    )
     # Le fichier de comparaison appartient à cette suite et ne remplace pas une autre.
     table = output / f"comparison-{runs[0].name}.csv"
     default_cohort = "paired" if any(c.mode == "pair" for c in configs) else "all"
@@ -72,21 +104,38 @@ def main(argv=None):
     cohort = spec.get("comparison_cohort", default_cohort)
     populations = {}
     for run, c in zip(runs, configs):
+        if not (run / "metrics.json").is_file():
+            continue  # CV-only search has no test metrics.
         metrics = json.loads((run / "metrics.json").read_text())
+        if not metrics.get("test_cohorts"):
+            continue
         identity = metrics["test_cohorts"][cohort]["cohort_id"]
         populations.setdefault((c.task, identity), []).append(run)
     if len(populations) == 1:
-        compare_experiments(runs, table, cohort=spec.get("comparison_cohort", default_cohort))
+        compare_experiments(
+            runs, table, cohort=spec.get("comparison_cohort", default_cohort)
+        )
         tables.append(table)
     else:
         for index, ((task, _), population) in enumerate(populations.items(), 1):
             task_table = table.with_name(table.stem + f"-{task}-{index}.csv")
             tables.append(task_table)
-            compare_experiments(population,
+            compare_experiments(
+                population,
                 task_table,
-                cohort=spec.get("comparison_cohort", default_cohort))
+                cohort=spec.get("comparison_cohort", default_cohort),
+            )
         table = None
-    print(json.dumps({"runs": list(map(str, runs)), "comparison": str(table) if table else None, "comparisons": list(map(str, tables))}, indent=2))
+    print(
+        json.dumps(
+            {
+                "runs": list(map(str, runs)),
+                "comparison": str(table) if table else None,
+                "comparisons": list(map(str, tables)),
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

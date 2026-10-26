@@ -6,6 +6,7 @@ import inspect
 from types import MethodType
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 _MODELS = {}
 
@@ -13,9 +14,13 @@ _MODELS = {}
 def _scattering_transfer_signature(module):
     """Explicit semantic adapter for the optional Kymatio dependency."""
     return {
-        "version": 1, "kymatio": importlib.metadata.version("kymatio"),
-        "J": module.J, "L": module.L, "max_order": module.max_order,
-        "shape": module.shape, "pre_pad": module.pre_pad,
+        "version": 1,
+        "kymatio": importlib.metadata.version("kymatio"),
+        "J": module.J,
+        "L": module.L,
+        "max_order": module.max_order,
+        "shape": module.shape,
+        "pre_pad": module.pre_pad,
         "out_type": module.out_type,
     }
 
@@ -116,10 +121,12 @@ class ImageEncoder(nn.Module):
     def transfer_signature(self):
         return {"version": 1, "output_dim": self.output_dim}
 
+    def forward_features(self, x):
+        """Cartes spatiales avant flatten, pour les fusions intermodales."""
+        return self.to_latent(self.encoder(x))
+
     def forward(self, x):
-        x = self.encoder(x)
-        x = self.to_latent(x)
-        return x.flatten(1)
+        return self.forward_features(x).flatten(1)
 
 
 @register_model("cnn")
@@ -256,7 +263,11 @@ class DualEncoderCNN(nn.Module):
     def transfer_modules(self):
         return {
             "radio": self.radio_encoder,
-            **({"xray": self.chandra_encoder} if self.chandra_encoder is not None else {}),
+            **(
+                {"xray": self.chandra_encoder}
+                if self.chandra_encoder is not None
+                else {}
+            ),
             "head": self.classifier,
         }
 
@@ -429,8 +440,12 @@ class DualSSNEncoder(nn.Module):
         self.train()
 
     def transfer_signature(self):
-        return {"version": 1, "input_shape": self.input_shape,
-                "scattering_shape": self.scattering_shape, "output_dim": self.output_dim}
+        return {
+            "version": 1,
+            "input_shape": self.input_shape,
+            "scattering_shape": self.scattering_shape,
+            "output_dim": self.output_dim,
+        }
 
     def forward(self, x, scattering):
         if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
@@ -575,7 +590,11 @@ class DualEncoderSSN(nn.Module):
     def transfer_modules(self):
         return {
             "radio": self.radio_encoder,
-            **({"xray": self.chandra_encoder} if self.chandra_encoder is not None else {}),
+            **(
+                {"xray": self.chandra_encoder}
+                if self.chandra_encoder is not None
+                else {}
+            ),
             "head": self.classifier,
         }
 
@@ -625,6 +644,289 @@ class DualEncoderSSN(nn.Module):
         return self.classifier(torch.cat(features, dim=1))
 
 
+@register_model("spatial_difference_fusion", modes=("pair", "multimodal"))
+class SpatialDifferenceFusion(nn.Module):
+    """Dual CNN à fusion spatiale radio/CHANDRA, compatible avec la pipeline.
+
+    Entrée : x [B, 3, H, W] = [radio, CHANDRA, masque CHANDRA].
+    Sortie : logits [B, num_classes] (pas de sigmoid).
+
+    Les deux ImageEncoder ont la même structure et les mêmes clés de
+    paramètres que DualEncoderCNN, pour permettre le transfer learning.
+    """
+
+    def __init__(
+        self,
+        input_shape,
+        num_classes=2,
+        fusion_hidden_dim=64,
+        use_mask=True,
+        use_coverage=True,
+        dropout_rate=0.3,
+    ):
+        super().__init__()
+        channels, height, width = input_shape
+        if channels != 3:
+            raise ValueError(
+                "SpatialDifferenceFusion attend 3 canaux : radio, CHANDRA, masque"
+            )
+        self.input_shape = tuple(input_shape)
+        self.use_mask = use_mask
+        self.use_coverage = use_coverage
+
+        self.radio_encoder = ImageEncoder((1, height, width))
+        self.chandra_encoder = ImageEncoder((2 if use_mask else 1, height, width))
+
+        # ImageEncoder.to_latent produit des cartes à 32 canaux.
+        # Ces projections apprennent un espace commun pour les deux modalités.
+        feature_channels = 32
+        self.radio_proj = nn.Conv2d(feature_channels, fusion_hidden_dim, 1)
+        self.xray_proj = nn.Conv2d(feature_channels, fusion_hidden_dim, 1)
+
+        self.fusion = nn.Sequential(
+            nn.Conv2d(4 * fusion_hidden_dim, fusion_hidden_dim, 3, padding=1),
+            nn.LeakyReLU(0.2),
+            nn.Dropout2d(dropout_rate),
+            nn.Conv2d(fusion_hidden_dim, fusion_hidden_dim, 3, padding=1),
+            nn.LeakyReLU(0.2),
+        )
+
+        classifier_dim = 2 * fusion_hidden_dim + int(use_coverage)
+        self.classifier = nn.Sequential(
+            nn.Linear(classifier_dim, fusion_hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(dropout_rate),
+            nn.Linear(fusion_hidden_dim, num_classes),
+        )
+
+    def transfer_modules(self):
+        return {
+            "radio": self.radio_encoder,
+            "xray": self.chandra_encoder,
+            "head": self.classifier,
+        }
+
+    def forward(self, x):
+        if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
+            raise ValueError(f"Entrée attendue : [B, {self.input_shape}]")
+
+        radio = x[:, 0:1]
+        chandra = x[:, 1:2]
+        mask = x[:, 2:3].clamp(0, 1)
+        coverage = mask.mean(dim=(2, 3))  # [B, 1]
+
+        r = self.radio_proj(self.radio_encoder.forward_features(radio))
+        xray_input = x[:, 1:3] if self.use_mask else chandra
+        xr = self.xray_proj(self.chandra_encoder.forward_features(xray_input))
+
+        # Couverture fractionnelle par cellule du feature map.
+        m = F.adaptive_avg_pool2d(mask, r.shape[-2:]).to(r.dtype)
+        valid = (m > 0).to(r.dtype)
+        xr = xr * valid
+
+        # Interactions radio-X-ray seulement dans les zones observées.
+        combined = torch.cat(
+            [r * m, xr * m, torch.abs(r - xr) * m, (r * xr) * m],
+            dim=1,
+        )
+        fused = self.fusion(combined)
+
+        # Pooling masqué : pas de signal joint sur des pixels non couverts.
+        denom = m.sum(dim=(2, 3)).clamp_min(1e-6)
+        joint_vector = (fused * m).sum(dim=(2, 3)) / denom
+        radio_vector = r.mean(dim=(2, 3))
+
+        features = [radio_vector, joint_vector]
+        if self.use_coverage:
+            features.append(coverage)
+        return self.classifier(torch.cat(features, dim=1))
+
+
+@register_model("spatial_difference_early_fusion", modes=("pair", "multimodal"))
+class SpatialDifferenceEarlyFusion(nn.Module):
+    """
+    Dual Encoder CNN avec fusion spatiale intermédiaire (16x16).
+
+    Input:
+        [B, 3, H, W] : radio, CHANDRA, masque
+
+    Output:
+        [B, num_classes] : logits
+
+    Compatible avec le transfert des ImageEncoder
+    de DualEncoderCNN.
+    """
+
+    def __init__(
+        self,
+        input_shape,
+        num_classes=2,
+        fusion_hidden_dim=64,
+        use_mask=True,
+        use_coverage=True,
+        dropout_rate=0.3,
+    ):
+        super().__init__()
+
+        channels, height, width = input_shape
+        if channels != 3:
+            raise ValueError("Entrée attendue : radio, CHANDRA, mask")
+
+        self.input_shape = tuple(input_shape)
+        self.use_mask = use_mask
+        self.use_coverage = use_coverage
+
+        # Encodeurs identiques à DualEncoderCNN
+        self.radio_encoder = ImageEncoder((1, height, width))
+        self.chandra_encoder = ImageEncoder((2 if use_mask else 1, height, width))
+
+        # Point de fusion après deux blocs de to_latent :
+        # pour 128x128, features de taille 16x16.
+        self.split_idx = 8
+
+        feature_channels = 32
+        hidden = fusion_hidden_dim
+
+        self.radio_proj = nn.Conv2d(feature_channels, hidden, 1)
+        self.xray_proj = nn.Conv2d(feature_channels, hidden, 1)
+
+        # Fusion des cartes à 16x16
+        self.fusion = nn.Sequential(
+            nn.Conv2d(4 * hidden, hidden, 3, padding=1),
+            nn.LeakyReLU(0.2),
+            nn.Dropout2d(dropout_rate),
+            nn.Conv2d(hidden, hidden, 3, padding=1),
+            nn.LeakyReLU(0.2),
+        )
+
+        # Réduction spatiale de la branche fusion :
+        # 16x16 -> 8x8 -> 4x4
+        self.fusion_deep = nn.Sequential(
+            nn.Conv2d(hidden, hidden, 3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+            nn.Dropout2d(dropout_rate),
+            nn.Conv2d(hidden, hidden, 3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+        )
+
+        # Trois représentations :
+        # radio profonde, X-ray profonde, fusion profonde
+        self.radio_final_proj = nn.Conv2d(32, hidden, 1)
+        self.xray_final_proj = nn.Conv2d(32, hidden, 1)
+
+        classifier_dim = 3 * hidden + int(use_coverage)
+
+        self.classifier = nn.Sequential(
+            nn.Linear(classifier_dim, hidden),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden, num_classes),
+        )
+
+    def transfer_modules(self):
+        return {
+            "radio": self.radio_encoder,
+            "xray": self.chandra_encoder,
+            "head": self.classifier,
+        }
+
+    def _early_features(self, encoder, x):
+        """Extraction jusqu'à 16x16 pour une entrée 128x128."""
+        x = encoder.encoder(x)
+        x = encoder.to_latent[: self.split_idx](x)
+        return x
+
+    def _deep_features(self, encoder, features):
+        """Extraction de 16x16 jusqu'à 4x4."""
+        return encoder.to_latent[self.split_idx :](features)
+
+    @staticmethod
+    def _masked_pool(features, mask):
+        """Moyenne spatiale pondérée par la couverture."""
+        denominator = mask.sum(dim=(2, 3)).clamp_min(1e-6)
+        return (features * mask).sum(dim=(2, 3)) / denominator
+
+    def forward(self, x):
+        if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
+            raise ValueError(f"Entrée attendue : [B, {self.input_shape}]")
+
+        radio = x[:, 0:1]
+        chandra = x[:, 1:2]
+        mask = x[:, 2:3].clamp(0, 1)
+
+        coverage = mask.mean(dim=(2, 3))
+
+        xray_input = torch.cat([chandra, mask], dim=1) if self.use_mask else chandra
+
+        # ------------------------------------------
+        # 1. Extraction intermédiaire (16x16)
+        # ------------------------------------------
+        radio_mid = self._early_features(self.radio_encoder, radio)
+        xray_mid = self._early_features(self.chandra_encoder, xray_input)
+
+        # ------------------------------------------
+        # 2. Fusion spatiale à 16x16
+        # ------------------------------------------
+        r = self.radio_proj(radio_mid)
+        xr = self.xray_proj(xray_mid)
+
+        m = F.adaptive_avg_pool2d(mask, r.shape[-2:]).to(r.dtype)
+
+        valid = (m > 0).to(r.dtype)
+        xr = xr * valid
+
+        combined = torch.cat(
+            [
+                r * m,
+                xr * m,
+                torch.abs(r - xr) * m,
+                (r * xr) * m,
+            ],
+            dim=1,
+        )
+
+        fused = self.fusion(combined)
+
+        # ------------------------------------------
+        # 3. Extraction profonde (4x4)
+        # ------------------------------------------
+        # Branche fusionnée
+        fused = self.fusion_deep(fused * m)
+
+        # Branches indépendantes pré-entraînées
+        radio_deep = self._deep_features(self.radio_encoder, radio_mid)
+        xray_deep = self._deep_features(self.chandra_encoder, xray_mid)
+
+        # Projections dans un espace commun
+        radio_deep = self.radio_final_proj(radio_deep)
+        xray_deep = self.xray_final_proj(xray_deep)
+
+        # ------------------------------------------
+        # 4. Pooling
+        # ------------------------------------------
+        m_deep = F.adaptive_avg_pool2d(mask, fused.shape[-2:]).to(fused.dtype)
+
+        radio_vector = radio_deep.mean(dim=(2, 3))
+
+        xray_vector = self._masked_pool(xray_deep, m_deep)
+
+        joint_vector = self._masked_pool(fused, m_deep)
+
+        # ------------------------------------------
+        # 5. Classification
+        # ------------------------------------------
+        features = [
+            radio_vector,
+            xray_vector,
+            joint_vector,
+        ]
+
+        if self.use_coverage:
+            features.append(coverage)
+
+        return self.classifier(torch.cat(features, dim=1))
+
+
 def _list_models_with_scattering():
     """Noms de modèles utilisant le scattering, pour avertir sur mixup."""
     return [
@@ -646,11 +948,16 @@ def output_names_for_task(task):
 def task_for_output_names(names):
     """Recover legacy task metadata only from an unambiguous set of labels."""
     if isinstance(names, (list, tuple)) and all(isinstance(n, str) for n in names):
-        matches = [task for task, outputs in _TASK_OUTPUT_NAMES.items()
-                   if len(names) == len(outputs) and set(names) == set(outputs)]
+        matches = [
+            task
+            for task, outputs in _TASK_OUTPUT_NAMES.items()
+            if len(names) == len(outputs) and set(names) == set(outputs)
+        ]
         if len(matches) == 1:
             return matches[0]
-    raise ValueError("Missing source task and unrecognized class_names; provide source.config_path with an explicit task")
+    raise ValueError(
+        "Missing source task and unrecognized class_names; provide source.config_path with an explicit task"
+    )
 
 
 def build_model(config, num_classes, input_shape=None):

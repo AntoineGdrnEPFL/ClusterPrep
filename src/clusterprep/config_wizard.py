@@ -116,11 +116,11 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
                 ),
             )
         split["val_size"] = ask(
-            "Fraction validation (du jeu complet)",
+            "Fraction validation (du jeu complet, 0 = sans validation)",
             0.2,
             float,
-            lambda v: math.isfinite(v) and 0 < v < 1 - test_size,
-            "fraction positive ; test + validation doit être inférieur à 1",
+            lambda v: math.isfinite(v) and 0 <= v < 1 - test_size,
+            "fraction positive ou nulle ; test + validation doit être inférieur à 1",
         )
 
         experiments = []
@@ -196,8 +196,11 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
                 key = item.name
                 if key in {"name", "mode", "model", "seed", "model_params", "transfer"}:
                     continue
+                if split["val_size"] == 0 and key in {"use_early_stopping", "threshold_selection"}:
+                    config = replace(config, **{key: False if key == "use_early_stopping" else "fixed"})
+                    continue
                 default = getattr(config, key)
-                if key in {"thresholds", "threshold_grid", "training_phases"}:
+                if key in {"thresholds", "threshold_grid", "training_phases", "cross_validation"}:
                     parser = json.loads
                 elif key == "processed_dir":
                     default = path(default) if default is not None else None

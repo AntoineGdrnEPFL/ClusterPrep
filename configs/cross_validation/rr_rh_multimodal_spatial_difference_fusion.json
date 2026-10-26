@@ -1,0 +1,68 @@
+{
+    "data_dir": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified",
+    "output_dir": "/Users/antoinegdrn/PH_Project_I/results/clusterprep_cv/rr_rh",
+    "class_names": null,
+    "split": {
+        "split_seed": 42,
+        "test_size": 0.2,
+        "use_val": false
+    },
+    "comparison_cohort": "all",
+    "experiments": [
+        {
+            "epochs": 80,
+            "batch_size": 16,
+            "learning_rate": 5e-05,
+            "weight_decay": 0.1,
+            "use_class_weights": true,
+            "label_smoothing": 0.1,
+            "use_scheduler": true,
+            "scheduler": "onecycle",
+            "max_lr_factor": 3.0,
+            "warmup_fraction": 0.3,
+            "use_mixup": true,
+            "mixup_probability": 0.5,
+            "mixup_alpha": 0.4,
+            "gradient_clip_norm": 1.0,
+            "use_early_stopping": true,
+            "patience": 50,
+            "drop_last_train": true,
+            "name": "spatial_difference_fusion_rr_rh_cv",
+            "mode": "multimodal",
+            "model": "spatial_difference_fusion",
+            "seed": 42,
+            "size": 128,
+            "width": 16,
+            "augment": true,
+            "cache": true,
+            "processed_dir": "/Users/antoinegdrn/PH_Project_I/processed",
+            "verbose": true,
+            "num_workers": 0,
+            "device": "mps",
+            "monitor": "val_loss",
+            "min_delta": 0.0,
+            "class_weight": "balanced",
+            "task": "rr_rh",
+            "transfer": null,
+            "training_phases": [],
+            "cross_validation": {
+                "enabled": true,
+                "n_splits": 5,
+                "shuffle": true,
+                "seed": 42,
+                "strategy": "auto",
+                "selection_metric": "val_loss",
+                "selection_mode": "min",
+                "max_epochs": 80,
+                "retrain_full_train": true,
+                "evaluate_test_after_retrain": true
+            },
+            "candidate_policy": "positive",
+            "thresholds": {
+                "RR": 0.5,
+                "RH": 0.5
+            },
+            "threshold_selection": "fixed"
+        }
+    ]
+}

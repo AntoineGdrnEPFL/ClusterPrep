@@ -120,7 +120,7 @@ class ProtocolTests(unittest.TestCase):
             return {'loss': 1.}, []
         with patch.object(trainer, 'train_one_epoch', side_effect=train), \
              patch.object(trainer, 'evaluate', side_effect=[({'loss': v}, []) for v in (1., 2., 3.)]):
-            history = trainer.fit(None, None)
+            history = trainer.fit(None, [object()])  # Nonempty validation loader, evaluated by mock.
         self.assertEqual(len(history), 3)
         self.assertEqual(trainer.best_epoch, 1)
         torch.testing.assert_close(model.weight, states[0])
