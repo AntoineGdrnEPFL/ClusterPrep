@@ -936,7 +936,7 @@ def _list_models_with_scattering():
     ]
 
 
-_TASK_OUTPUT_NAMES = {"de_nde": ("DE", "NDE"), "rr_rh": ("RR", "RH")}
+_TASK_OUTPUT_NAMES = {"de_nde": ("DE", "NDE"), "rr_rh": ("RR", "RH"), "rr_binary": ("non_RR", "RR"), "rh_binary": ("non_RH", "RH")}
 
 
 def output_names_for_task(task):

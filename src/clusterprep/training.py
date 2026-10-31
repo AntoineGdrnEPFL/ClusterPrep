@@ -13,7 +13,7 @@ import re
 import time
 import uuid
 import warnings
-from .labels import labels_for, task_target, merge_cluster_labels
+from .labels import BINARY_TASKS, SUBTYPE_TASKS, TASK_NAMES, labels_for, task_target, merge_cluster_labels
 import numpy as np
 import torch
 from torch import nn
@@ -108,7 +108,7 @@ class ExperimentConfig(TrainingConfig):
         resolve_thresholds(self.thresholds)
         if self.threshold_selection not in {"fixed", "f1", "recall_at_precision"}:
             raise ValueError("threshold_selection : fixed, f1 ou recall_at_precision")
-        if self.task == "de_nde" and self.threshold_selection != "fixed":
+        if self.task in BINARY_TASKS and self.threshold_selection != "fixed":
             raise ValueError("La sélection de seuils est réservée à rr_rh")
         if (
             not np.isfinite(self.threshold_min_precision)
@@ -158,8 +158,8 @@ class ExperimentConfig(TrainingConfig):
             )
         if self.class_weight not in {"none", "balanced"}:
             raise ValueError("class_weight doit être none ou balanced")
-        if self.task not in {"de_nde", "rr_rh"}:
-            raise ValueError("task doit être de_nde ou rr_rh")
+        if self.task not in TASK_NAMES:
+            raise ValueError("task doit être de_nde, rr_rh, rr_binary ou rh_binary")
         if self.candidate_policy not in {"positive", "ignore"}:
             raise ValueError("candidate_policy doit être positive ou ignore")
 
@@ -231,6 +231,10 @@ def _validate_splits(
         if seen & clusters:
             raise ValueError("Fuite de clusters entre les splits")
         seen.update(clusters)
+        if task in SUBTYPE_TASKS and keys:
+            targets = {task_target(info[k], task, candidate_policy)[0] for k in keys}
+            if len(targets) != 2:
+                warnings.warn(f"{task} split {index}: classe absente, ROC-AUC indéfinie", UserWarning)
     labels = {}
     for keys in splits:
         for key in keys:
@@ -261,7 +265,7 @@ def compute_task_counts(
     candidate_policy="positive",
 ):
     targets = [task_target(data_info[k], task, candidate_policy)[0] for k in train_keys]
-    if task == "de_nde":
+    if task in BINARY_TASKS:
         return [sum(t == i for t in targets) for i in range(2)]
     return np.asarray(targets).sum(axis=0).tolist()
 
@@ -363,7 +367,7 @@ def _epoch(
                 ):
                     raise ValueError("Targets binaires finis requis")
             # CE simple conservée séparément pour les comparaisons de cohortes.
-            if getattr(config, "task", "de_nde") == "de_nde":
+            if getattr(config, "task", "de_nde") in BINARY_TASKS:
                 losses = nn.functional.cross_entropy(
                     logits,
                     target,
@@ -414,7 +418,7 @@ def _epoch(
                 optimizer.step()
                 if scheduler is not None:
                     scheduler.step()
-            if getattr(config, "task", "de_nde") == "de_nde":
+            if getattr(config, "task", "de_nde") in BINARY_TASKS:
                 proba = logits.detach().softmax(dim=1).cpu().numpy()
             elif getattr(config, "task", "de_nde") == "rr_rh":
                 proba = logits.detach().sigmoid().cpu().numpy()
@@ -441,7 +445,7 @@ def _epoch(
             if not training:
                 sample_losses = losses.detach().cpu().tolist()
                 for i in range(len(target)):
-                    if getattr(config, "task", "de_nde") == "de_nde":
+                    if getattr(config, "task", "de_nde") in BINARY_TASKS:
                         true_label = int(truth[i])
                         predicted_label = int(proba[i].argmax())
                     elif getattr(config, "task", "de_nde") == "rr_rh":
@@ -470,6 +474,7 @@ def _epoch(
                             "cluster_id": batch.get("cluster_id", [None] * len(target))[
                                 i
                             ],
+                            **({"annotations": batch["annotations"][i]} if task in SUBTYPE_TASKS else {}),
                             "label": true_label,
                             "label_mask": (
                                 mask[i].cpu().tolist() if task == "rr_rh" else None
@@ -486,7 +491,7 @@ def _epoch(
         raise ValueError("Aucun label connu dans ce split")
     if count == 0:
         raise ValueError("Aucun exemple dans le DataLoader")
-    if getattr(config, "task", "de_nde") == "de_nde":
+    if getattr(config, "task", "de_nde") in BINARY_TASKS:
         metrics = classification_metrics(
             labels,
             probabilities,
@@ -502,6 +507,17 @@ def _epoch(
         )
     else:
         raise ValueError(f"Tâche inconnue : {config.task}")
+    if task in SUBTYPE_TASKS:
+        metrics["task"] = task
+        metrics["positive_class"] = class_names[1]
+        metrics["negative_categories"] = {
+            category: {
+                "count": len(rows),
+                "false_positives": sum(p["prediction"] == 1 for p in rows),
+            }
+            for category in sorted({p["annotations"] for p in predictions if p["label"] == 0})
+            for rows in [[p for p in predictions if p["label"] == 0 and p["annotations"] == category]]
+        }
     metrics["loss"] = total_loss / max(loss_denominator, 1)
     return metrics, predictions
 
@@ -850,7 +866,7 @@ class Trainer:
                     else _inputs(batch, getattr(self.config, "mode", "raw"), self.model)
                 )
                 logits = forward_model(self.model, inputs)
-                if getattr(self.config, "task", "de_nde") == "de_nde":
+                if getattr(self.config, "task", "de_nde") in BINARY_TASKS:
                     probabilities = logits.softmax(dim=1)
                 elif getattr(self.config, "task", "de_nde") == "rr_rh":
                     probabilities = logits.sigmoid()
@@ -881,7 +897,7 @@ def _cohort(
     )
     targets = [p["label"] for p in ordered]
     probabilities = [p["probabilities"] for p in ordered]
-    if task == "de_nde":
+    if task in BINARY_TASKS:
         metrics = classification_metrics(
             targets,
             probabilities,
@@ -909,7 +925,7 @@ def _cohort(
     identity = {
         "task": task,
         "classes": list(class_names),
-        **({"candidate_policy": candidate_policy} if task == "rr_rh" else {}),
+        **({"candidate_policy": candidate_policy} if task != "de_nde" else {}),
         "samples": [
             (
                 p["key"],
@@ -956,8 +972,10 @@ def _write_predictions(
         "has_chandra",
         "loss",
     ]
+    if task in SUBTYPE_TASKS:
+        base_fields.append("annotations")
     probability_fields = [f"probability_{name}" for name in class_names]
-    if task == "de_nde":
+    if task in BINARY_TASKS:
         fields = base_fields + ["label", "prediction"] + probability_fields
     elif task == "rr_rh":
         label_fields = [f"label_{name}" for name in class_names]
@@ -979,7 +997,7 @@ def _write_predictions(
         writer.writeheader()
         for prediction in predictions:
             row = {key: prediction[key] for key in base_fields}
-            if task == "de_nde":
+            if task in BINARY_TASKS:
                 row["label"] = prediction["label"]
                 row["prediction"] = prediction["prediction"]
             elif task == "rr_rh":
@@ -1034,6 +1052,9 @@ def run_experiment(
     class_names = ("RR", "RH") if config.task == "rr_rh" else tuple(class_names)
     if config.task == "de_nde" and set(class_names) != {"DE", "NDE"}:
         class_names = CLASS_NAMES
+    if config.task in SUBTYPE_TASKS:
+        positive = "RR" if config.task == "rr_binary" else "RH"
+        class_names = ("non_" + positive, positive)
     transfer_splits_report = None
     if _cv_execution is None and isinstance(config.transfer, TransferConfig) and config.transfer.reuse_splits:
         resolved, transfer_splits_report = resolve_transfer_splits(
@@ -1088,6 +1109,21 @@ def run_experiment(
         transfer_splits_report["leakage_audit"] = audit
         for warning in audit["warnings"]:
             warnings.warn(warning, UserWarning)
+    if config.task in SUBTYPE_TASKS and isinstance(config.transfer, ModularTransferConfig) and config.transfer.enabled:
+        audits = {}
+        for name, source in config.transfer.sources.items():
+            source_dir = Path(source["checkpoint"]).resolve().parent
+            if (source_dir / "splits.json").exists():
+                audit = audit_transfer_splits(source_dir, data_info, splits)
+                audit["independent_evaluation"] = not audit["warnings"]
+            else:
+                audit = {"independent_evaluation": False,
+                         "warnings": [f"Source {name}: splits.json absent, indépendance de l'évaluation non vérifiable"]}
+            for warning in audit["warnings"]:
+                warnings.warn(warning, UserWarning)
+            audits[name] = audit
+        transfer_splits_report = {"sources": audits,
+                                  "independent_evaluation": all(a["independent_evaluation"] for a in audits.values())}
     base_splits = splits
     if config.mode == "pair":
         splits = tuple(
@@ -1180,6 +1216,9 @@ def _run(
         except TransferError as error:
             _json(run_dir / "transfer.json", error.report)
             raise
+        if transfer_splits_report is not None:
+            transfer_report["split_provenance"] = transfer_splits_report
+            _json(run_dir / "transfer_splits_report.json", transfer_splits_report)
         _json(run_dir / "transfer.json", transfer_report)
         for entry in transfer_report["mappings"]:
             message(f"Transfer {entry['source']}:{entry['from']} -> {entry['to']}: "
@@ -1576,6 +1615,8 @@ def _run(
             )
     if transfer_report is not None:
         results["transfer"] = transfer_report
+    if config.task in SUBTYPE_TASKS and transfer_splits_report is not None:
+        results["independent_evaluation"] = transfer_splits_report["independent_evaluation"]
     _json(run_dir / "metrics.json", results)
     _json(run_dir / "status.json", {"status": "completed"})
     message(

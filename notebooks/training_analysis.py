@@ -20,11 +20,12 @@ GAIN_METRICS = ['accuracy', 'balanced_accuracy', 'f1_de', 'recall_de',
 
 
 def gain_scores(frame, classes):
-    """Scores de la heatmap ; ROC/AP ont DE pour classe positive."""
-    if 'DE' not in classes:
-        raise ValueError('DE class missing: DE metrics are undefined')
+    """Scores de la heatmap ; classe positive DE, RR ou RH selon les sorties."""
+    positive = "DE" if "DE" in classes else (classes[1] if tuple(classes) in {("non_RR", "RR"), ("non_RH", "RH")} else None)
+    if positive is None:
+        raise ValueError("Unknown binary positive class")
     result = scores(frame, classes)
-    i = classes.index('DE')
+    i = classes.index(positive)
     y = frame.label.to_numpy(int)
     p = frame[[f'probability_{c}' for c in classes]].to_numpy(float)
     precision, recall, f1, support = precision_recall_fscore_support(
@@ -36,7 +37,11 @@ def gain_scores(frame, classes):
                   precision_de=precision[i] if support[i] else np.nan,
                   roc_auc=roc_auc_score(binary, p[:, i]) if both else np.nan,
                   pr_auc=average_precision_score(binary, p[:, i]) if both else np.nan)
-    return {k: result[k] for k in GAIN_METRICS}
+    result = {k: result[k] for k in GAIN_METRICS}
+    if positive != "DE":
+        for key in ("f1", "recall", "precision"):
+            result[key + "_positive"] = result.pop(key + "_de")
+    return result
 
 
 def gain_tables(runs, split='test', cohort='paired', include_pair=True,
@@ -99,7 +104,7 @@ def gain_tables(runs, split='test', cohort='paired', include_pair=True,
                        label=f"{pair.model} | {chandra.config['mode']}/raw | p{index} | n={len(a)}"
                              + (' *' if filtered_pair else '')
                              + (' [code change]' if code_changed else ''))
-            for k in GAIN_METRICS:
+            for k in ma:
                 row[k] = mb[k] - ma[k]
                 row[f'raw_{k}'], row[f'chandra_{k}'] = ma[k], mb[k]
             rows.append(row)
@@ -110,7 +115,7 @@ def gain_tables(runs, split='test', cohort='paired', include_pair=True,
         matrix = pd.DataFrame(columns=GAIN_METRICS)
     else:
         details = details.sort_values(['model', 'comparison', 'chandra_id', 'raw_id'])
-        matrix = details.set_index('label')[GAIN_METRICS]
+        matrix = details.set_index('label')[[k for k in GAIN_METRICS + ['f1_positive', 'recall_positive', 'precision_positive'] if k in details]]
     return matrix, details, pd.DataFrame(issues)
 
 
@@ -540,3 +545,26 @@ def protocol_summary(table, runs, metric='macro_f1'):
     result.loc[eligible, 'rank_in_cohort_set'] = result[eligible].groupby('cohort_set')[f'{metric}_mean'].rank(
         ascending=metric in LOWER, method='min')
     return result.sort_values(['cohort_set', 'rank_in_cohort_set'])
+
+
+def plot_binary_galleries(run, *, processed_root, split="test", cohort="all",
+                          radio_template="{cluster_id}/{cluster_id}_RAW_processed_size128_v2.fits",
+                          chandra_template="{cluster_id}/{cluster_id}_CHANDRA_processed_size128_v2.fits",
+                          chandra_only=False, ncols=4):
+    """TP/TN/FP/FN using the shared radio/CHANDRA gallery renderer."""
+    from clusterprep.multilabel_analysis import plot_classification_gallery
+    classes = list(run.classes)
+    positive = classes.index("DE") if "DE" in classes else 1
+    frame = run.predictions(split, cohort)
+    figures = {}
+    for status, truth, prediction in (("TP", True, True), ("TN", False, False),
+                                      ("FP", False, True), ("FN", True, False)):
+        selected = frame[(frame.label.eq(positive) == truth) & (frame.prediction.eq(positive) == prediction)]
+        entries = selected.to_dict("records")
+        for entry in entries:
+            entry.update(positive_class=classes[positive], probability=entry[f"probability_{classes[positive]}"])
+        figures[status] = plot_classification_gallery(
+            entries, title=f"{run.config.get('task', 'de_nde')} — {classes[positive]} — {status}",
+            processed_root=processed_root, radio_template=radio_template,
+            chandra_template=chandra_template, chandra_only=chandra_only, ncols=ncols)
+    return figures

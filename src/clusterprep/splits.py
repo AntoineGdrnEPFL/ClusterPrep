@@ -3,18 +3,24 @@
 from collections import defaultdict, Counter
 import numpy as np
 import warnings
-from .labels import labels_for, task_target, merge_cluster_labels
+from .labels import labels_for, task_target, merge_cluster_labels, binary_subtype_target, SUBTYPE_TASKS, BINARY_TASKS
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 
 def eligible_for_task(info, task, candidate_policy="positive"):
     if candidate_policy not in {"positive", "ignore"}:
-        raise ValueError("candidate_policy doit être positive ou ignore")
+        raise ValueError("candidate_policy doit être 'positive' ou 'ignore'")
     labels = labels_for(info)
     if task == "de_nde":
         return bool(labels & {"DE", "NDE"})
     if task == "rr_rh":
-        return bool(labels & {"NDE", "RR", "RH", "cRR", "cRH"})
+        allowed = {"NDE", "RR", "RH"}
+        if candidate_policy == "positive":
+            allowed |= {"cRR", "cRH"}
+        return bool(labels & allowed)
+    if task in SUBTYPE_TASKS:
+        return binary_subtype_target(info, task, candidate_policy) is not None
+
     raise ValueError(f"Tâche inconnue : {task}")
 
 
@@ -78,8 +84,9 @@ def split_data_keys(
     if not 0 <= val_size < 1:
         raise ValueError("val_size doit être dans [0, 1[")
     use_val = use_val and val_size > 0
-    if (not 0 < test_size < 1
-        or (use_val and n_folds is None and test_size + val_size >= 1)):
+    if not 0 < test_size < 1 or (
+        use_val and n_folds is None and test_size + val_size >= 1
+    ):
         raise ValueError("test_size + val_size doit être < 1")
     if n_folds is not None:
         if not isinstance(n_folds, int) or n_folds < 2:
@@ -122,6 +129,8 @@ def split_data_keys(
             for cid in cluster_ids
         ]
 
+    elif task in SUBTYPE_TASKS:
+        strata = [multilabel_stratum(data_info[keys_by_cluster[cid][0]], candidate_policy) for cid in cluster_ids]
     elif task == "rr_rh":
         strata = [
             multilabel_stratum(
@@ -135,6 +144,13 @@ def split_data_keys(
         raise ValueError(f"Tâche inconnue : {task}")
     if not cluster_ids:
         raise ValueError("Aucun cluster éligible")
+
+    if task in SUBTYPE_TASKS:
+        binary_strata = [class_by_cluster[cid] for cid in cluster_ids]
+        required = n_folds or 2
+        if min(Counter(strata).values()) < required:
+            warnings.warn(f"{task}: catégories rares, stratification sur la cible binaire")
+            strata = binary_strata
 
     if n_folds is None:
         # Séparation classique train / validation / test.
@@ -153,7 +169,7 @@ def split_data_keys(
             random_state=seed,
         )
         if min(strata.count(label) for label in set(strata)) < n_folds:
-            if task == "de_nde":
+            if task in BINARY_TASKS:
                 raise ValueError(
                     "Chaque classe doit contenir au moins n_folds clusters"
                 )
@@ -211,6 +227,14 @@ def _safe_split(ids, *, stratify, task="de_nde", **kwargs):
                 raise ValueError(
                     f"Stratification RR/RH impossible; effectifs {dict(Counter(stratify))}: {fallback_error}"
                 ) from error
+        if task in SUBTYPE_TASKS:
+            # Collapse original categories onto the requested scalar target.
+            j = 0 if task == "rr_binary" else 1
+            binary = [s[j] if len(s) == 2 else s for s in stratify]
+            try:
+                return train_test_split(ids, stratify=binary, **kwargs)
+            except ValueError as fallback_error:
+                raise ValueError(f"{task}: stratification impossible, effectifs {dict(Counter(binary))}") from fallback_error
         if len(ids) < 3:
             raise ValueError(
                 "Pas assez de clusters pour trois splits non vides"
@@ -227,16 +251,22 @@ def split_distribution(data_info, splits, task="de_nde", candidate_policy="posit
     for name, keys in zip(("train", "validation", "test"), splits):
         unique = {info[k]["cluster_id"]: info[k] for k in keys}
         counts = dict.fromkeys(
-            ("00", "10", "01", "11") if task == "rr_rh" else ("DE", "NDE"), 0
+            ("00", "10", "01", "11") if task != "de_nde" else ("DE", "NDE"), 0
         )
         for item in unique.values():
             stratum = (
                 multilabel_stratum(item, candidate_policy)
-                if task == "rr_rh"
+                if task != "de_nde"
                 else ("DE" if "DE" in labels_for(item) else "NDE")
             )
             counts[stratum] = counts.get(stratum, 0) + 1
         result[name] = counts
+        if task in SUBTYPE_TASKS:
+            targets = [task_target(item, task, candidate_policy)[0] for item in unique.values()]
+            pos = sum(targets)
+            neg = len(targets) - pos
+            result["labels"][name] = {"positive": pos, "negative": neg,
+                                      "roc_auc_defined": bool(pos and neg)}
         if task == "rr_rh":
             pairs = [
                 task_target(item, task, candidate_policy) for item in unique.values()

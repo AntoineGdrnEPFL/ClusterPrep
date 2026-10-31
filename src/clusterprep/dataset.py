@@ -8,7 +8,7 @@ from torchvision.transforms import functional as TF
 from .preprocessing import preprocess, normalize
 from .processed import load_processed
 from .scattering import load_scattering
-from .labels import labels_for, task_target, merge_cluster_labels
+from .labels import labels_for, task_target, merge_cluster_labels, BINARY_TASKS, SUBTYPE_TASKS, TASK_NAMES
 from .processed import _identity
 
 
@@ -40,7 +40,7 @@ class ClusterDataset(Dataset):
             raise ValueError("size doit être un entier positif")
         if len(set(class_names)) != len(class_names):
             raise ValueError("Classes dupliquées")
-        if task not in {"de_nde", "rr_rh"} or candidate_policy not in {
+        if task not in TASK_NAMES or candidate_policy not in {
             "positive",
             "ignore",
         }:
@@ -79,6 +79,8 @@ class ClusterDataset(Dataset):
                     raise ValueError(f"Cluster non éligible DE/NDE : {key}")
                 if {"DE", "NDE"}.issubset(labels):
                     raise ValueError(f"Cluster ambigu DE/NDE : {key}")
+            elif self.task in SUBTYPE_TASKS:
+                task_target(info, self.task, candidate_policy)
             elif self.task == "rr_rh":
                 if not ("NDE" in labels or labels & {"RR", "RH", "cRR", "cRH"}):
                     raise ValueError(f"Cluster non éligible RR/RH : {key}")
@@ -97,7 +99,7 @@ class ClusterDataset(Dataset):
 
     def _make_target(self, info):
         target, _ = task_target(info, self.task, self.candidate_policy, list(self.class_to_idx))
-        return torch.tensor(target, dtype=torch.long if self.task == "de_nde" else torch.float32)
+        return torch.tensor(target, dtype=torch.long if self.task in BINARY_TASKS else torch.float32)
 
     def __getitem__(self, index):
         source_index, variant_index = self._decode_index(index)
@@ -162,6 +164,8 @@ class ClusterDataset(Dataset):
             "key": self.keys[source_index],
             "has_chandra": bool(info.get("chandra_path")),
         }
+        if self.include_targets and self.task in SUBTYPE_TASKS:
+            sample["annotations"] = "+".join(sorted(labels_for(info)))
         if self.include_targets:
             sample["label"] = self._make_target(info)
         if self.include_targets and self.task == "rr_rh":

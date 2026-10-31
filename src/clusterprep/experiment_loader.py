@@ -196,10 +196,10 @@ def resolve_transfer_splits(
     if mode not in {"raw", "pair", "multimodal"}:
         raise ValueError(f"Mode inconnu : {mode}")
 
-    if task not in {"de_nde", "rr_rh"}:
+    if task not in {"de_nde", "rr_rh", "rr_binary", "rh_binary"}:
         raise ValueError(f"Tâche inconnue : {task}")
 
-    if candidate_policy != "positive":
+    if candidate_policy not in {"positive", "ignore"} or (task not in {"rr_binary", "rh_binary"} and candidate_policy != "positive"):
         raise ValueError(
             "Cette version prend uniquement en charge " "candidate_policy='positive'."
         )
@@ -238,7 +238,7 @@ def resolve_transfer_splits(
     def is_eligible(info):
         validate_annotations(info)
 
-        if not eligible_for_task(info, task):
+        if not eligible_for_task(info, task, candidate_policy):
             return False
 
         if mode == "pair" and not info.get("chandra_path"):

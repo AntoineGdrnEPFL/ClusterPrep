@@ -81,8 +81,14 @@ def main(argv=None):
         parser.error("Un fichier de configuration est requis")
     spec = json.loads(args.config.read_text())
     classes = spec.get("class_names")
-    info = get_data_info_dict(spec["data_dir"], classes)
     configs = [ExperimentConfig(**item) for item in spec["experiments"]]
+    # Historical binary JSONs commonly restrict discovery to DE/NDE folders.
+    # Subtype tasks need the original annotations, including candidate folders.
+    from .labels import SUBTYPE_TASKS
+    discovery_classes = classes
+    if any(c.task in SUBTYPE_TASKS for c in configs) and (classes is None or set(classes) == {"DE", "NDE"}):
+        discovery_classes = None
+    info = get_data_info_dict(spec["data_dir"], discovery_classes)
     if args.quiet:
         configs = [replace(c, verbose=False) for c in configs]
     if args.processed_dir is not None:

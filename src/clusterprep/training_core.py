@@ -1,5 +1,7 @@
 """Protocole d'entraînement indépendant des architectures et des modalités."""
 
+from .labels import BINARY_TASKS
+
 import copy
 from dataclasses import dataclass
 import math
@@ -97,7 +99,7 @@ def build_criterion(
         config.use_class_weights
         and getattr(config, "class_weight", "balanced") != "none"
     )
-    if task == "de_nde":
+    if task in BINARY_TASKS:
         weights = compute_class_weights(class_counts, device) if enabled else None
         return nn.CrossEntropyLoss(
             weight=weights,

@@ -1,0 +1,20 @@
+{
+    "data_dir": "scratch/data/PSZ2/classified",
+    "output_dir": "results/rh_binary",
+    "split": {
+        "split_seed": 42,
+        "test_size": 0.2,
+        "val_size": 0.2
+    },
+    "experiments": [
+        {
+            "name": "rh_binary_image_cnn",
+            "task": "rh_binary",
+            "candidate_policy": "positive",
+            "mode": "raw",
+            "model": "image_cnn",
+            "processed_dir": "/Users/antoinegdrn/PH_Project_I/processed",
+            "seed": 42
+        }
+    ]
+}

@@ -1091,6 +1091,10 @@ def _contour_levels(chandra_display, n_levels=4):
 
 
 def _gallery_title(entry):
+    if "positive_class" in entry:
+        return (f"{entry['cluster_id']}\n{entry['positive_class']}: "
+                f"{entry['label']}→{entry['prediction']}\n"
+                f"p={entry['probability']:.2f} | {entry.get('annotations', '')}")
     return (
         f"{entry['cluster_id']}\n"
         f"RR {entry['label_RR'] if entry['known_RR'] else '?'}→{entry['prediction_RR'] if entry['known_RR'] else '?'}  "
@@ -1108,6 +1112,7 @@ def plot_classification_gallery(
     chandra_template,
     ncols=4,
     tile_title_fontsize=8,
+    chandra_only=False,
     radio_npz_key=None,
     chandra_npz_key=None,
 ):
@@ -1145,13 +1150,16 @@ def plot_classification_gallery(
             radio_npz_key=radio_npz_key,
             chandra_npz_key=chandra_npz_key,
         )
+        if chandra_only and chandra is None:
+            ax.set_title(_gallery_title(entry) + "\nCHANDRA indisponible", fontsize=tile_title_fontsize)
+            continue
         ax.imshow(
-            _display_image(radio, percentiles=(1, 99.5)),
+            _display_image(chandra if chandra_only else radio, percentiles=(1, 99.5)),
             origin="lower",
             cmap="plasma",
             interpolation="none",
         )
-        if chandra is not None:
+        if chandra is not None and not chandra_only:
             displayed = _display_image(chandra, percentiles=(1, 99.5))
             levels = _contour_levels(displayed, n_levels=4)
             if levels is not None:
@@ -1167,7 +1175,7 @@ def plot_classification_gallery(
         ax.text(
             0.02,
             0.02,
-            "Radio + contours CHANDRA" if chandra is not None else "Radio seule",
+            "CHANDRA seule" if chandra_only else ("Radio + contours CHANDRA" if chandra is not None else "Radio seule"),
             ha="left",
             va="bottom",
             transform=ax.transAxes,

@@ -1,6 +1,10 @@
 """Conventions d'annotation communes aux datasets, splits et pertes."""
 import numpy as np
 
+BINARY_TASKS = frozenset({"de_nde", "rr_binary", "rh_binary"})
+SUBTYPE_TASKS = frozenset({"rr_binary", "rh_binary"})
+TASK_NAMES = BINARY_TASKS | {"rr_rh"}
+
 ANNOTATION_NAMES = ("DE", "NDE", "RR", "RH", "cRR", "cRH")
 
 
@@ -22,6 +26,11 @@ def task_target(info, task, candidate_policy="positive", class_names=("DE", "NDE
         if not chosen:
             raise ValueError("Cluster non éligible DE/NDE")
         return list(class_names).index(next(iter(chosen))), None
+    if task in SUBTYPE_TASKS:
+        target = binary_subtype_target(info, task, candidate_policy)
+        if target is None:
+            raise ValueError(f"Cluster non éligible {task}: {sorted(labels)}")
+        return target, None
     if task != "rr_rh":
         raise ValueError(f"Tâche inconnue : {task}")
     if not labels & {"NDE", "RR", "RH", "cRR", "cRH"}:
@@ -46,3 +55,19 @@ def merge_cluster_labels(data_info):
             raise ValueError(f"Annotations contradictoires pour {cid}: {sorted(labels)}") from error
     return {key: {**info, "labels": grouped[info["cluster_id"]].copy()}
             for key, info in data_info.items()}
+
+
+def binary_subtype_target(info, task, candidate_policy="positive"):
+    """Scalar subtype target, or None when no certain task target is available."""
+    if task not in SUBTYPE_TASKS or candidate_policy not in {"positive", "ignore"}:
+        raise ValueError("task ou candidate_policy invalide")
+    labels = labels_for(info)
+    positive = "RR" if task == "rr_binary" else "RH"
+    if candidate_policy == "ignore" and "c" + positive in labels and positive not in labels:
+        return None
+    allowed = {"RR", "RH", "NDE"}
+    if candidate_policy == "positive":
+        allowed |= {"cRR", "cRH"}
+    if not labels & allowed:
+        return None
+    return int(positive in labels or (candidate_policy == "positive" and "c" + positive in labels))
