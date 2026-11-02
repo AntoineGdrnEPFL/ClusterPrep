@@ -12,6 +12,7 @@ import numpy as np
 import torch
 
 from .progress import progress, message
+from .augmentation import validate_zoom, zoom_identity, variant_count
 
 SCATTERING_CACHE_VERSION = 2
 
@@ -47,7 +48,9 @@ def scattering_identity(
     J,
     L,
     max_order,
+    zoom=None,
 ):
+    zoom_key = zoom_identity(zoom)
     return {
         "version": SCATTERING_CACHE_VERSION,
         "preprocessing_version": CACHE_VERSION,
@@ -63,10 +66,11 @@ def scattering_identity(
             "percentile_hi": 99,
             "alpha": 10.0,
         },
-        # Important également : les 24 variantes sont précalculées.
+        # Ordre historique des 24 géométries, répété pour chaque zoom.
         "augmentation": {
             "rotations": list(range(0, 360, 30)),
             "horizontal_flip": [False, True],
+            **({"zoom": zoom_key} if zoom_key is not None else {}),
         },
         "sources": _source_signature(info, mode),
     }
@@ -80,6 +84,7 @@ def scattering_paths(
     L,
     max_order,
     scattering_dir,
+    zoom=None,
 ):
     cluster = quote(str(info["cluster_id"]), safe="+")
     if cluster in {"", ".", ".."}:
@@ -92,6 +97,11 @@ def scattering_paths(
         f"J{J}_L{L}_O{max_order}_"
         f"v{SCATTERING_CACHE_VERSION}"
     )
+
+    zoom_key = zoom_identity(zoom)
+    if zoom_key is not None:
+        digest = hashlib.sha256(json.dumps(zoom_key, sort_keys=True).encode()).hexdigest()[:16]
+        stem += f"_zoom{digest}"
 
     return {
         "data": root / f"{stem}.npy",
@@ -107,6 +117,7 @@ def load_scattering(
     J=2,
     L=8,
     max_order=2,
+    zoom=None,
 ):
     """
     Charge le cache sous forme de memmap.
@@ -123,6 +134,7 @@ def load_scattering(
         L,
         max_order,
         scattering_dir,
+        zoom=zoom,
     )
 
     if not paths["data"].exists() or not paths["metadata"].exists():
@@ -137,6 +149,7 @@ def load_scattering(
         J,
         L,
         max_order,
+        zoom=zoom,
     )
 
     if metadata["identity"] != expected:
@@ -149,7 +162,7 @@ def load_scattering(
     )
 
     K = 1 + J * L + (L * L * J * (J - 1) // 2 if max_order == 2 else 0)
-    expected_shape = (24, 1 if mode == "raw" else 3, K, size // 2**J, size // 2**J)
+    expected_shape = (variant_count(zoom), 1 if mode == "raw" else 3, K, size // 2**J, size // 2**J)
     if tuple(metadata["shape"]) != expected_shape or coefficients.dtype != np.float32:
         raise ValueError("Métadonnées scattering invalides")
     if hashlib.sha256(paths["data"].read_bytes()).hexdigest() != metadata["sha256"]:
@@ -223,14 +236,15 @@ def prepare_scattering(
     force=False,
     task="de_nde",
     candidate_policy="positive",
+    zoom=None,
 ):
     """
-    Précalcule les 24 scattering de chaque amas.
+    Précalcule les variantes rotation/flip/zoom de chaque amas.
 
     Les images passent exactement par ClusterDataset :
         preprocessing
         -> normalisation
-        -> rotation/flip
+        -> rotation/flip/zoom
         -> scattering
     """
 
@@ -239,10 +253,11 @@ def prepare_scattering(
     # import local pour éviter une dépendance circulaire
     from .dataset import ClusterDataset
 
+    zoom = validate_zoom(zoom)
     unique = {}
     for key in keys:
         cid = data_info[key]["cluster_id"]
-        if cid in unique and scattering_identity(data_info[unique[cid]], mode, size, J, L, max_order) != scattering_identity(data_info[key], mode, size, J, L, max_order):
+        if cid in unique and scattering_identity(data_info[unique[cid]], mode, size, J, L, max_order, zoom) != scattering_identity(data_info[key], mode, size, J, L, max_order, zoom):
             raise ValueError(f"Sources contradictoires pour {cid}")
         unique.setdefault(cid, key)
     keys = list(unique.values())
@@ -279,6 +294,7 @@ def prepare_scattering(
                 L,
                 max_order,
                 scattering_dir,
+                zoom=zoom,
             )
 
             if not force:
@@ -291,6 +307,7 @@ def prepare_scattering(
                         J=J,
                         L=L,
                         max_order=max_order,
+                        zoom=zoom,
                     )
 
                     counts["reused"] += 1
@@ -308,13 +325,14 @@ def prepare_scattering(
                 mode=mode,
                 size=size,
                 augment=True,
+                zoom=zoom,
                 cache=True,
                 processed_dir=processed_dir,
                 scattering_dir=None,
                 include_targets=False,
             )
 
-            initial_identity = scattering_identity(info, mode, size, J, L, max_order)
+            initial_identity = scattering_identity(info, mode, size, J, L, max_order, zoom)
             variants = []
 
             with torch.inference_mode():
@@ -355,6 +373,7 @@ def prepare_scattering(
                 J,
                 L,
                 max_order,
+                zoom=zoom,
             )
 
             if identity != initial_identity:

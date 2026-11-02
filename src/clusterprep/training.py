@@ -19,6 +19,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 from .dataset import ClusterDataset
+from .augmentation import validate_zoom, variant_count
 from .io import CLASS_NAMES
 from .metrics import (
     classification_metrics,
@@ -91,8 +92,9 @@ class ExperimentConfig(TrainingConfig):
     def __post_init__(self):
         super().__post_init__()
         from .radio_noise import validate_radio_noise
-        if not isinstance(self.augmentation, dict) or set(self.augmentation) - {"radio_noise"}:
-            raise ValueError("augmentation: seul radio_noise est accepté")
+        if not isinstance(self.augmentation, dict) or set(self.augmentation) - {"radio_noise", "zoom"}:
+            raise ValueError("augmentation: seules les clés radio_noise et zoom sont acceptées")
+        validate_zoom(self.augmentation.get("zoom"))
         noise = validate_radio_noise(self.augmentation.get("radio_noise"))
         if noise["enabled"] and self.model == "dual_ssn":
             raise ValueError("radio_noise incompatible avec dual_ssn (scattering précalculé)")
@@ -1239,7 +1241,9 @@ def _run(
     needs_multiple = any(
         isinstance(layer, nn.modules.batchnorm._BatchNorm) for layer in model.modules()
     )
-    train_count = len(splits[0]) * (ClusterDataset.N_VARIANTS if config.augment else 1)
+    zoom = config.augmentation.get("zoom")
+    n_variants = variant_count(zoom) if config.augment else 1
+    train_count = len(splits[0]) * n_variants
     if needs_multiple and (config.batch_size < 2 or train_count < 2):
         raise ValueError(
             "Un modèle avec BatchNorm requiert batch_size >= 2 et au moins deux exemples train"
@@ -1253,7 +1257,7 @@ def _run(
         f"\n{config.name} | mode={config.mode}, modèle={config.model}, device={device}, "
         f"seed={config.seed}\n"
         f"Train/validation/test : {'/'.join(str(len(k)) for k in splits)} amas ; "
-        f"augmentation={'24 variantes' if config.augment else 'non'} ; "
+        f"augmentation={str(n_variants) + ' variantes' if config.augment else 'non'} ; "
         f"{epoch_budget} époques maximum, early stopping={config.monitor} "
         f"(patience={config.patience}, actif={config.use_early_stopping}).\nRésultats : {run_dir}",
         config.verbose,
@@ -1285,24 +1289,25 @@ def _run(
 
         scattering_params = model.scattering_config
         scattering_dir = Path(config.processed_dir or "processed") / "scattering"
-        scattering_preparation = prepare_scattering(
-            info,
-            [k for keys in splits for k in keys],
-            class_names,
-            mode=config.mode,
-            size=config.size,
-            processed_dir=config.processed_dir,
-            scattering_dir=scattering_dir,
-            device=device,
-            verbose=config.verbose,
-            task=config.task,
-            candidate_policy=config.candidate_policy,
-            **scattering_params,
-        )
-        _json(
-            run_dir / "scattering.json",
-            scattering_preparation,
-        )
+        # Evaluation always reads historical, unzoomed variant zero, even
+        # when the training factors omit 1.0 or place it at another index.
+        scattering_preparation = {"created": 0, "reused": 0}
+        groups = [(splits[0], zoom if config.augment else None),
+                  ([k for keys in splits[1:] for k in keys], None)]
+        for keys, split_zoom in groups:
+            if not keys:
+                continue
+            counts = prepare_scattering(
+                info, keys, class_names, mode=config.mode, size=config.size,
+                processed_dir=config.processed_dir, scattering_dir=scattering_dir,
+                device=device, verbose=config.verbose, task=config.task,
+                candidate_policy=config.candidate_policy, zoom=split_zoom,
+                **scattering_params,
+            )
+            for name in scattering_preparation:
+                scattering_preparation[name] += counts[name]
+        _json(run_dir / "scattering.json", scattering_preparation)
+
     datasets = [
         ClusterDataset(
             info,
@@ -1311,6 +1316,7 @@ def _run(
             mode=config.mode,
             size=config.size,
             augment=config.augment and i == 0,
+            zoom=zoom,
             radio_noise=config.augmentation.get("radio_noise"),
             training=i == 0,
             cache=config.cache,
@@ -1373,6 +1379,12 @@ def _run(
         "config": asdict(config),
         "class_names": list(class_names),
         "train_class_counts": dict(zip(class_names, class_counts)),
+        "augmentation_summary": {
+            "train_variants_per_cluster": n_variants,
+            "examples_per_split": dict(zip(("train", "validation", "test"),
+                                           (len(ds) for ds in datasets))),
+            "train_batches_per_epoch": len(loaders[0]),
+        },
         "model_class": f"{type(model).__module__}.{type(model).__qualname__}",
         "model_repr": repr(model),
         "scattering_config": getattr(model, "scattering_config", None),

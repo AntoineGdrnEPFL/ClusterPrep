@@ -3,7 +3,7 @@ from .io import CLASS_NAMES, get_data_info_dict, get_pairs, load_celestial_fits
 from .preprocessing import block_average, centered_raw_window, normalize, preprocess
 from .dataset import ClusterDataset
 from .splits import split_data_keys
-from .visualization import plot_sample, plot_comparison, plot_history
+from .visualization import plot_sample, plot_comparison, plot_history, plot_zoom_variants
 from .models import (SimpleCNN, FusionCNN, ImageCNN, DualEncoderCNN, DualSSN, DualEncoderSSN,
                      build_model, register_model, list_models)
 from .metrics import classification_metrics, multilabel_metrics
@@ -15,7 +15,7 @@ __all__ = ["CLASS_NAMES", "get_data_info_dict", "get_pairs", "load_celestial_fit
            "ClusterDataset", "split_data_keys", "plot_sample", "plot_comparison",
            "SimpleCNN", "FusionCNN", "build_model", "classification_metrics",
            "ExperimentConfig", "EarlyStopping", "run_experiment", "run_experiments",
-           "compare_experiments", "plot_history"]
+           "compare_experiments", "plot_history", "plot_zoom_variants"]
 
 from .processed import load_processed, prepare_processed, processed_path, processed_paths
 __all__ += ["load_processed", "prepare_processed", "processed_path", "processed_paths"]

@@ -72,6 +72,53 @@ def plot_sample(sample, output_path=None):
     return _save(fig, output_path)
 
 
+def plot_zoom_variants(dataset, source_index=0, factors=(.9, 1., 1.1, 1.2),
+                       geometry_index=0, output_path=None, zoom=None):
+    """Compare zooms of one clean source with shared colour scales per row.
+
+    Reuses the dataset's preprocessing and a single normalized source. Noise
+    and scattering are disabled in this diagnostic; no dataset is mutated.
+    ``geometry_index`` uses the historical 0..23 rotation/flip ordering.
+    """
+    import torch
+    from .augmentation import (GEOMETRIC_VARIANTS, decode_variant,
+                               transform_aligned, validate_zoom)
+    from .dataset import ClusterDataset
+
+    if not 0 <= geometry_index < GEOMETRIC_VARIANTS:
+        raise ValueError("geometry_index doit être entre 0 et 23")
+    if not 0 <= source_index < len(dataset.keys):
+        raise IndexError(source_index)
+    config = validate_zoom({**dataset.zoom, **(zoom or {}),
+                            "enabled": True, "factors": list(factors)})
+    source = ClusterDataset(
+        dataset.data_info, [dataset.keys[source_index]], list(dataset.class_to_idx),
+        mode=dataset.mode, size=dataset.size, processed_dir=dataset.processed_dir,
+        include_targets=False,
+    )[0]
+    names = [name for name in ("raw", "chandra", "chandra_mask") if name in source]
+    tensor = torch.cat([source[name] for name in names])
+    angle, flip, _ = decode_variant(geometry_index)
+    variants = [transform_aligned(tensor, angle, flip, scale, config).numpy()
+                for scale in config["factors"]]
+    fig, axes = plt.subplots(len(names), len(variants), squeeze=False,
+                             figsize=(4 * len(variants), 3 * len(names)),
+                             constrained_layout=True)
+    labels = {"raw": "Radio", "chandra": "CHANDRA", "chandra_mask": "Mask"}
+    for row, name in enumerate(names):
+        lo = min(0., min(float(v[row].min()) for v in variants))
+        hi = max(1., max(float(v[row].max()) for v in variants))
+        for col, (scale, value) in enumerate(zip(config["factors"], variants)):
+            ax = axes[row, col]
+            artist = ax.imshow(value[row], origin="lower", vmin=lo, vmax=hi,
+                               cmap="gray" if name == "chandra_mask" else
+                               "viridis" if name == "raw" else "inferno")
+            ax.set_title(f"{labels[name]} — {scale:g}×")
+        fig.colorbar(artist, ax=list(axes[row]), shrink=.8)
+    fig.suptitle(f"{source['cluster_id']} — rotation {angle}°, flip {flip}")
+    return _save(fig, output_path)
+
+
 def plot_comparison(raw_image, chandra_image, raw_wcs, chandra_wcs,
                     raw_title="Radio", chandra_title="Chandra", output_path=None):
     """Compare les images natives et Chandra reprojeté sur la grille radio."""

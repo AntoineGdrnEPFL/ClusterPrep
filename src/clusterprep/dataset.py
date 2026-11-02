@@ -1,22 +1,22 @@
-"""Dataset PyTorch avec 24 variantes synchronisées par amas."""
+"""Dataset PyTorch avec variantes géométriques synchronisées par amas."""
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torchvision.transforms import InterpolationMode
-from torchvision.transforms import functional as TF
 from .preprocessing import preprocess, normalize
 from .processed import load_processed
 from .scattering import load_scattering
 from .labels import labels_for, task_target, merge_cluster_labels, BINARY_TASKS, SUBTYPE_TASKS, TASK_NAMES
 from .processed import _identity
+from .augmentation import (ROTATIONS, FLIPS, GEOMETRIC_VARIANTS, validate_zoom,
+                           variant_count, decode_variant, transform_aligned, zoom_identity)
 from .radio_noise import validate_radio_noise, prepare_noise_context, add_radio_noise
 
 
 class ClusterDataset(Dataset):
-    ROTATIONS = tuple(range(0, 360, 30))
-    FLIPS = (False, True)
-    N_VARIANTS = len(ROTATIONS) * len(FLIPS)
+    ROTATIONS = ROTATIONS
+    FLIPS = FLIPS
+    N_VARIANTS = GEOMETRIC_VARIANTS
 
     def __init__(
         self,
@@ -35,6 +35,7 @@ class ClusterDataset(Dataset):
         include_targets=True,
         radio_noise=None,
         training=False,
+        zoom=None,
     ):
 
         if mode not in {"raw", "pair", "multimodal"}:
@@ -61,6 +62,8 @@ class ClusterDataset(Dataset):
         self.mode = mode
         self.size = size
         self.augment = augment
+        self.zoom = validate_zoom(zoom)
+        self.N_VARIANTS = variant_count(self.zoom)
         self.processed_dir = processed_dir
         self.cache = cache
         self._cache = {}
@@ -114,7 +117,7 @@ class ClusterDataset(Dataset):
         info = self.data_info[self.keys[source_index]]
         use_pair = self.mode != "raw" and bool(info.get("chandra_path"))
         identity = _identity(info, "pair" if use_pair else "raw", self.size)
-        cache_key = repr(identity)
+        cache_key = repr((identity, zoom_identity(self.zoom) if self.augment else None))
         if getattr(self, "_identities", {}).get(source_index) != cache_key:
             self._cache.pop(source_index, None)
             self._noise_cache.pop(source_index, None)
@@ -175,16 +178,8 @@ class ClusterDataset(Dataset):
                 self._cache[source_index] = tensor.clone()
 
         if self.augment:
-            rotation_index, flip_index = divmod(variant_index, len(self.FLIPS))
-            if self.FLIPS[flip_index]:
-                tensor = TF.hflip(tensor)
-            tensor = TF.rotate(
-                tensor,
-                angle=self.ROTATIONS[rotation_index],
-                interpolation=InterpolationMode.NEAREST,
-                expand=False,
-                fill=0,
-            )
+            angle, flip, scale = decode_variant(variant_index, self.zoom)
+            tensor = transform_aligned(tensor, angle, flip, scale, self.zoom)
 
         sample = {
             "raw": tensor[0:1],
@@ -213,6 +208,7 @@ class ClusterDataset(Dataset):
                     mode=self.mode,
                     size=self.size,
                     scattering_dir=self.scattering_dir,
+                    zoom=self.zoom if self.augment else None,
                     **self.scattering_params,
                 )
 
@@ -233,10 +229,7 @@ class ClusterDataset(Dataset):
     def get_item_info(self, index):
         source_index, variant_index = self._decode_index(index)
         info = self.data_info[self.keys[source_index]]
-        rotation_index, flip_index = divmod(
-            variant_index,
-            len(self.FLIPS),
-        )
+        angle, flip, scale = decode_variant(variant_index, self.zoom) if self.augment else (0, False, 1.0)
         return {
             "cluster_id": info["cluster_id"],
             "labels": sorted(labels_for(info)),
@@ -246,6 +239,9 @@ class ClusterDataset(Dataset):
             "chandra_path": info.get("chandra_path"),
             "scattering_path": info.get("scattering_path"),
             "candidate_policy": self.candidate_policy,
-            "rotation": (self.ROTATIONS[rotation_index] if self.augment else 0),
-            "flip_horizontal": (self.FLIPS[flip_index] if self.augment else False),
+            "rotation": angle,
+            "flip_horizontal": flip,
+            "zoom_factor": scale,
+            "source_index": source_index,
+            "variant_index": variant_index,
         }

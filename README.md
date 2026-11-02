@@ -8,6 +8,9 @@ La version 0.2 ajoute l'entraînement multi-expériences : voir
 [le guide d'entraînement](TRAINING.md) pour les trois modes de données,
 l'early stopping, les checkpoints et la comparaison des métriques.
 
+Le [zoom indexé optionnel](ZOOM.md) étend les rotations/flips avec des facteurs
+configurables, des masques CHANDRA synchronisés et des caches scattering dédiés.
+
 Le [transfert modulaire](MODULAR_TRANSFER.md) permet d'initialiser des modules
 depuis plusieurs checkpoints, entre tâches et architectures compatibles, avec
 des mappings JSON explicites et des phases d'entraînement indépendantes.
