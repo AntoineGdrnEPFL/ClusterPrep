@@ -10,6 +10,7 @@ from .processed import load_processed
 from .scattering import load_scattering
 from .labels import labels_for, task_target, merge_cluster_labels, BINARY_TASKS, SUBTYPE_TASKS, TASK_NAMES
 from .processed import _identity
+from .radio_noise import validate_radio_noise, prepare_noise_context, add_radio_noise
 
 
 class ClusterDataset(Dataset):
@@ -32,6 +33,8 @@ class ClusterDataset(Dataset):
         task="de_nde",
         candidate_policy="positive",
         include_targets=True,
+        radio_noise=None,
+        training=False,
     ):
 
         if mode not in {"raw", "pair", "multimodal"}:
@@ -45,6 +48,11 @@ class ClusterDataset(Dataset):
             "ignore",
         }:
             raise ValueError("task ou candidate_policy invalide")
+        self.radio_noise = validate_radio_noise(radio_noise)
+        self.noise_enabled = training and self.radio_noise["enabled"]
+        if self.noise_enabled and scattering_dir is not None:
+            raise ValueError("radio_noise incompatible avec le scattering précalculé")
+        self._noise_cache = {}
         self.include_targets = include_targets
         data_info = merge_cluster_labels(data_info) if include_targets else data_info
         self.data_info = data_info
@@ -109,11 +117,31 @@ class ClusterDataset(Dataset):
         cache_key = repr(identity)
         if getattr(self, "_identities", {}).get(source_index) != cache_key:
             self._cache.pop(source_index, None)
+            self._noise_cache.pop(source_index, None)
             self._scattering_cache.pop(source_index, None)
         if not hasattr(self, "_identities"):
             self._identities = {}
         self._identities[source_index] = cache_key
-        if source_index in self._cache:
+        if self.noise_enabled:
+            # Cache deterministic linear data; draw fresh noise before geometry.
+            if source_index not in self._noise_cache:
+                images = (preprocess(info, "pair" if use_pair else "raw", self.size)
+                          if self.processed_dir is None else
+                          load_processed(info, "pair" if use_pair else "raw", self.size, self.processed_dir))
+                context = prepare_noise_context(images, info, self.processed_dir)
+                clean = images["raw"]
+                bounds = np.quantile(clean[np.isfinite(clean)].astype(float), [.30, .99])
+                self._noise_cache[source_index] = images, context, bounds
+            images, context, bounds = self._noise_cache[source_index]
+            noisy = add_radio_noise(images["raw"], context, self.radio_noise)
+            channels = [torch.from_numpy(normalize(noisy, bounds=bounds))]
+            if self.mode != "raw":
+                mask = images.get("chandra_mask", np.zeros((self.size, self.size), dtype=bool))
+                chandra = images.get("chandra", np.zeros((self.size, self.size), dtype=np.float32))
+                channels.extend([torch.from_numpy(normalize(chandra, mask=mask)),
+                                 torch.from_numpy(mask.astype(np.float32))])
+            tensor = torch.stack(channels)
+        elif source_index in self._cache:
             tensor = self._cache[source_index].clone()
         else:
             use_pair = self.mode != "raw" and bool(info.get("chandra_path"))

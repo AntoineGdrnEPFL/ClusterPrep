@@ -283,3 +283,10 @@ Une section `cross_validation` dans chaque expérience permet de choisir les ép
 sur des folds internes, puis de réentraîner un nouveau modèle sur tout le train
 externe et d'évaluer le test une seule fois. Les phases de transfert peuvent être
 comparées par combinaisons de durées. Voir le [guide et les configurations JSON](CROSS_VALIDATION.md).
+
+## Bruit radio optionnel
+
+Augmentations gaussienne et corrélée au faisceau, train uniquement : voir
+[configuration, conventions et expériences](RADIO_NOISE.md), ainsi que la section
+« Augmentation du bruit radio — validation visuelle » du
+[notebook radio/Chandra](notebooks/analyse_cluster_radio_chandra.ipynb).

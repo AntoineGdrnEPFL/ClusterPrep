@@ -7,7 +7,7 @@ name = "clusterprep"
 version = "0.3.0"
 description = "Radio and Chandra FITS preparation for PyTorch training"
 requires-python = ">=3.10"
-dependencies = ["numpy", "astropy", "reproject", "torch", "torchvision", "scikit-learn", "iterative-stratification>=0.1.9", "matplotlib", "tqdm"]
+dependencies = ["numpy", "scipy", "astropy", "reproject", "torch", "torchvision", "scikit-learn", "iterative-stratification>=0.1.9", "matplotlib", "tqdm"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]

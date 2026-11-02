@@ -57,12 +57,18 @@ def _read_image(path, name, identity):
         data = np.array(hdu.data, dtype=bool if name == "chandra_mask" else np.float32)
         if data.shape != (identity["size"], identity["size"]):
             raise ValueError("Forme du cache invalide")
-        return data, hdu.header["DSFACTOR"], WCS(hdu.header).celestial
+        metadata = ({k: hdu.header[k] for k in ("BMAJ", "BMIN", "BPA", "BUNIT") if k in hdu.header}
+                    if hdu.header.get("RNMETA", False) else None)
+        return data, hdu.header["DSFACTOR"], WCS(hdu.header).celestial, metadata
 
 
 def _write_image(path, name, result, identity):
     path.parent.mkdir(parents=True, exist_ok=True)
     header = result["wcs"].to_header()
+    if name == "raw" and "radio_metadata" in result:
+        header["RNMETA"] = True
+        for key, value in result["radio_metadata"].items():
+            header[key] = value
     header["CPVER"] = CACHE_VERSION
     header["DSFACTOR"] = result["factor"]
     header["NORMALIZ"] = False
@@ -106,8 +112,10 @@ def load_processed(info, mode="raw", size=128, processed_dir="processed", *,
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("error")
-                    data, factor, wcs = _read_image(read_path, name, identities[name])
+                    data, factor, wcs, metadata = _read_image(read_path, name, identities[name])
                 result.update({name: data, "factor": factor, "wcs": wcs})
+                if name == "raw" and metadata is not None:
+                    result["radio_metadata"] = metadata
                 if read_path != path:
                     _write_image(path, name, result, identities[name])
                 continue

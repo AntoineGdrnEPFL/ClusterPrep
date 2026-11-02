@@ -76,6 +76,7 @@ class ExperimentConfig(TrainingConfig):
     seed: int = 42
     size: int = 128
     width: int = 16
+    augmentation: dict = field(default_factory=dict)
     augment: bool = True
     cache: bool = True
     processed_dir: str | None = "processed"
@@ -89,6 +90,12 @@ class ExperimentConfig(TrainingConfig):
 
     def __post_init__(self):
         super().__post_init__()
+        from .radio_noise import validate_radio_noise
+        if not isinstance(self.augmentation, dict) or set(self.augmentation) - {"radio_noise"}:
+            raise ValueError("augmentation: seul radio_noise est accepté")
+        noise = validate_radio_noise(self.augmentation.get("radio_noise"))
+        if noise["enabled"] and self.model == "dual_ssn":
+            raise ValueError("radio_noise incompatible avec dual_ssn (scattering précalculé)")
         object.__setattr__(self, "cross_validation", parse_cross_validation(self.cross_validation))
         object.__setattr__(self, "transfer", parse_transfer(self.transfer))
         if isinstance(self.transfer, TransferConfig) and self.task != "rr_rh":
@@ -1266,6 +1273,8 @@ def _run(
     scattering_dir = None
     scattering_params = None
     if getattr(model, "uses_precomputed_scattering", False):
+        if config.augmentation.get("radio_noise", {}).get("enabled", False):
+            raise ValueError("radio_noise incompatible avec le scattering précalculé")
         if config.use_mixup:
             raise ValueError(
                 "Le scattering précalculé n'est pas compatible "
@@ -1302,6 +1311,8 @@ def _run(
             mode=config.mode,
             size=config.size,
             augment=config.augment and i == 0,
+            radio_noise=config.augmentation.get("radio_noise"),
+            training=i == 0,
             cache=config.cache,
             processed_dir=config.processed_dir,
             scattering_dir=scattering_dir,

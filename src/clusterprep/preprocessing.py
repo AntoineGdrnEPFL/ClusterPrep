@@ -1,7 +1,7 @@
 """Préparation alignée sur la grille radio, sans dépendance à dcreclass."""
 import numpy as np
 from reproject import reproject_interp
-from .io import read_fits_with_wcs
+from .io import read_fits_with_wcs, load_celestial_fits
 
 def block_average(image, factor):
     """Moyenne des valeurs finies dans des blocs factor × factor.
@@ -47,7 +47,8 @@ def preprocess(info, mode, size=128):
     if not isinstance(size, int) or size < 1:
         raise ValueError("size doit être positif")
 
-    raw, raw_wcs = read_fits_with_wcs(info["raw_path"])
+    raw, raw_header, raw_wcs = load_celestial_fits(info["raw_path"])
+    raw = raw.astype(np.float32)
     ratio = min(raw.shape) // size
     if ratio < 1:
         raise ValueError(f"RAW trop petit : {info['cluster_id']}")
@@ -57,6 +58,8 @@ def preprocess(info, mode, size=128):
     raw_small = block_average(raw_window, factor)
     reduced_window = tuple(slice(s.start, s.stop, factor) for s in window)
     result = {"raw": raw_small, "factor": factor, "wcs": raw_wcs.slice(reduced_window)}
+
+    result["radio_metadata"] = {k: raw_header[k] for k in ("BMAJ", "BMIN", "BPA", "BUNIT") if k in raw_header}
 
     if mode == "pair":
         if not info.get("chandra_path"):
@@ -77,7 +80,7 @@ def preprocess(info, mode, size=128):
     return result
 
 
-def normalize(image, mask=None, percentile_lo=30, percentile_hi=99, alpha=10.0):
+def normalize(image, mask=None, percentile_lo=30, percentile_hi=99, alpha=10.0, bounds=None):
     """Percentiles par image puis étirement asinh, comme dans dcreclass."""
     if not 0 <= percentile_lo < percentile_hi <= 100 or not np.isfinite(alpha) or alpha <= 0:
         raise ValueError("Percentiles ou alpha invalides")
@@ -91,8 +94,13 @@ def normalize(image, mask=None, percentile_lo=30, percentile_hi=99, alpha=10.0):
     if not valid.any():
         return output
     values = image[valid].astype(np.float64)
-    p_low = np.quantile(values, percentile_lo / 100)
-    p_high = np.quantile(values, percentile_hi / 100)
+    if bounds is None:
+        p_low = np.quantile(values, percentile_lo / 100)
+        p_high = np.quantile(values, percentile_hi / 100)
+    else:
+        p_low, p_high = bounds
+        if not np.isfinite(bounds).all() or p_high < p_low:
+            raise ValueError("Bornes de normalisation invalides")
     scaled = np.clip((values - p_low) / (p_high - p_low + 1e-6), 0, 1)
     output[valid] = (np.arcsinh(alpha * scaled) / np.arcsinh(alpha)).astype(np.float32)
     return output
