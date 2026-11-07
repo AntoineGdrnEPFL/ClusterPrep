@@ -105,3 +105,26 @@ def normalize(image, mask=None, percentile_lo=30, percentile_hi=99, alpha=10.0, 
     output[valid] = (np.arcsinh(alpha * scaled) / np.arcsinh(alpha)).astype(np.float32)
     return output
 
+
+
+def preprocess_optical(info, size=128, bands=None, hdu=None):
+    """Project all selected bands onto the exact pre-downsampling radio window."""
+    from .io import load_optical_fits
+    raw, _, radio_wcs = load_celestial_fits(info["raw_path"])
+    ratio = min(raw.shape) // size
+    if ratio < 1:
+        raise ValueError("RAW too small for optical reference grid")
+    factor = 1 << (ratio.bit_length() - 1)
+    window = centered_raw_window(raw.shape, size, factor)
+    planes, _, optical_wcs = load_optical_fits(info["legacy_path"], bands, hdu)
+    output = []
+    for plane in planes:
+        plane = np.where(np.isfinite(plane), plane, np.nan)
+        aligned, footprint = reproject_interp((plane, optical_wcs), radio_wcs.slice(window),
+                                              shape_out=raw[window].shape, order="bilinear")
+        aligned[footprint <= 0] = np.nan
+        output.append(block_average(aligned, factor))
+    image = np.stack(output)
+    reduced = tuple(slice(s.start, s.stop, factor) for s in window)
+    return {"legacy": image, "legacy_mask": np.isfinite(image), "factor": factor,
+            "wcs": radio_wcs.slice(reduced)}

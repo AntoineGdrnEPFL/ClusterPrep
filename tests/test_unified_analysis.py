@@ -135,6 +135,27 @@ def test_config_fold_aggregation_missing_folds_and_repetitions(make_run):
     assert a.aggregate_metrics(a.metrics_table([runs[0]])).empty
 
 
+def test_explicit_configuration_group_preserves_provenance(make_run):
+    reference = a.load_run(make_run('reference', fold=0))
+    path = make_run('other', fold=1)
+    metadata = json.loads((path / 'config.json').read_text())
+    metadata['config']['include_masks'] = True
+    metadata['library_source_sha256'] = 'different-source'
+    write(path / 'config.json', metadata)
+    assert a.load_run(path).configuration_id != reference.configuration_id
+    metadata['analysis_configuration_id'] = reference.configuration_id
+    write(path / 'config.json', metadata)
+    other = a.load_run(path)
+    assert other.config['include_masks'] is True
+    assert other.metadata['library_source_sha256'] == 'different-source'
+    summary = a.aggregate_metrics(a.metrics_table([reference, other]))
+    assert len(summary) == 1
+    assert summary.iloc[0].n_folds == 2
+    other.metadata['analysis_configuration_id'] = 'invalid'
+    with pytest.raises(ValueError, match='analysis_configuration_id'):
+        _ = other.configuration_id
+
+
 def test_history_phases_variable_length(make_run):
     runs = [a.load_run(make_run(str(i), fold=i)) for i in [0,1]]
     runs[0].history = [dict(epoch=1, phase='frozen', phase_epoch=1, validation={'loss':2}),

@@ -20,6 +20,9 @@ def preprocessing_main(argv):
         "--mode", choices=("raw", "pair", "multimodal"), default="multimodal"
     )
     parser.add_argument("--size", type=int, default=128)
+    parser.add_argument("--legacy-root", type=Path)
+    parser.add_argument("--legacy-only", action="store_true", help="Prepare only optical products")
+    parser.add_argument("--legacy-bands", nargs="+", default=["g", "r", "z"])
     parser.add_argument("--class-names", nargs="+", default=list(CLASS_NAMES))
     parser.add_argument(
         "--force", action="store_true", help="Recalculer même les FITS valides"
@@ -29,6 +32,22 @@ def preprocessing_main(argv):
     if args.size < 1:
         parser.error("--size doit être positif")
     info = get_data_info_dict(args.data_dir, args.class_names)
+    if args.legacy_only:
+        if args.legacy_root is None:
+            parser.error("--legacy-only requires --legacy-root")
+        from .io import discover_legacy
+        from .processed import load_processed_optical
+        info = discover_legacy(info, args.legacy_root)
+        counts = {"created": 0, "rebuilt": 0, "reused": 0, "absent": 0}
+        for item in info.values():
+            if not item.get("legacy_path"):
+                counts["absent"] += 1
+                continue
+            _, status = load_processed_optical(item, args.size, args.processed_dir,
+                                              bands=args.legacy_bands, force=args.force, return_status=True)
+            counts[status] += 1
+        print(json.dumps(counts, indent=2))
+        return
     keys = [
         k for k, item in info.items() if args.mode != "pair" or item.get("chandra_path")
     ]

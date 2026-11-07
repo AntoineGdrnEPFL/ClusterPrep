@@ -9,7 +9,7 @@ import hashlib
 
 CLASS_NAMES = ("DE", "NDE")
 
-def get_data_info_dict(data_dir, class_names=None):
+def get_data_info_dict(data_dir, class_names=None, *, legacy=None):
     """Une entrée par nom FITS, annotations fusionnées et sources vérifiées.
 
     Sans liste explicite, découvre les six catégories présentes.
@@ -46,7 +46,9 @@ def get_data_info_dict(data_dir, class_names=None):
             if info["chandra_path"] and Path(info["chandra_path"]).read_bytes() != file.read_bytes():
                 raise ValueError(f"Sources CHANDRA contradictoires : {file}")
             info["chandra_path"] = info["chandra_path"] or str(file)
-    return data_info
+    return (discover_legacy(data_info, legacy.get("raw_root"),
+                            legacy.get("filename_pattern", "{cluster_id}_legacy.fits"))
+            if legacy else data_info)
 
 def get_pairs(data_info: Dict[str, Dict[str, str]]) -> List[Dict[str, str]]:
     """
@@ -107,3 +109,41 @@ def load_celestial_fits(path: str) -> Tuple[np.ndarray, fits.Header, WCS]:
 def read_fits_with_wcs(path):
     image, _, wcs = load_celestial_fits(path)
     return image.astype(np.float32), wcs
+
+
+def discover_legacy(data_info, raw_root=None, filename_pattern="{cluster_id}_legacy.fits"):
+    """Attach optional optical sources without changing IDs, labels or eligibility."""
+    result = {key: dict(info) for key, info in data_info.items()}
+    if raw_root is None:
+        return result
+    root = Path(raw_root)
+    for info in result.values():
+        cluster = info["cluster_id"]
+        name = filename_pattern.format(cluster_id=cluster)
+        path = root / cluster / name
+        info["legacy_path"] = str(path) if path.is_file() else None
+    return result
+
+
+def load_optical_fits(path, bands=None, hdu=None):
+    """Read selected planes, never silently discard a spectral/band axis."""
+    with fits.open(path, memmap=False) as hdul:
+        if hdu is None:
+            selected, wcs = _find_celestial_image_hdu(hdul)
+        else:
+            selected = hdul[hdu]
+            wcs = WCS(selected.header).celestial
+        if not wcs.has_celestial:
+            raise ValueError("Optical FITS requires celestial WCS")
+        data = np.asarray(selected.data, dtype=np.float32)
+        if data.ndim == 2:
+            data = data[None]
+        if data.ndim != 3:
+            raise ValueError(f"Expected [bands, y, x] optical image, got {data.shape}")
+        header = selected.header.copy()
+        names = [str(header.get(f"BAND{i}", i)).strip() for i in range(len(data))]
+        indices = list(range(len(data))) if bands is None else [
+            names.index(b) if isinstance(b, str) else b for b in bands]
+        if any(i < 0 or i >= len(data) for i in indices):
+            raise ValueError("Optical band index out of range")
+        return data[indices].copy(), header, wcs

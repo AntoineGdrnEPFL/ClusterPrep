@@ -63,3 +63,9 @@ __all__ += ["TransferConfig", "TransferPhase", "validate_transfer_modules",
 
 from .cross_validation import CrossValidationConfig, build_internal_folds, aggregate_curves
 __all__ += ["CrossValidationConfig", "build_internal_folds", "aggregate_curves"]
+
+from .io import discover_legacy, load_optical_fits
+from .preprocessing import preprocess_optical
+from .processed import load_processed_optical
+from .models import MultiEncoderCNN
+__all__ += ["discover_legacy", "load_optical_fits", "preprocess_optical", "load_processed_optical", "MultiEncoderCNN"]

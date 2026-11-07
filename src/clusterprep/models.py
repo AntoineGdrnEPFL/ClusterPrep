@@ -960,6 +960,35 @@ def task_for_output_names(names):
     )
 
 
+@register_model("multi_encoder_cnn")
+class MultiEncoderCNN(nn.Module):
+    """Variable independent ImageEncoders with masked latent concatenation."""
+    def __init__(self, input_shape, modality_layout, num_classes=2, fusion_hidden_dim=64):
+        super().__init__()
+        self.modality_layout = modality_layout
+        self.encoders = nn.ModuleDict({name: ImageEncoder((count * (2 if mask else 1), *input_shape[1:]))
+                                       for name, count, mask in modality_layout})
+        dimension = sum(e.output_dim for e in self.encoders.values()) + len(modality_layout)
+        self.classifier = nn.Sequential(nn.Linear(dimension, fusion_hidden_dim), nn.LeakyReLU(.2),
+                                        nn.Dropout(.5), nn.Linear(fusion_hidden_dim, num_classes))
+
+    def transfer_modules(self):
+        return {**dict(self.encoders.items()), "head": self.classifier}
+
+    def forward(self, x):
+        features, coverages = [], []
+        offset = 0
+        for name, count, mask in self.modality_layout:
+            width = count * (2 if mask else 1)
+            image = x[:, offset:offset + width]
+            coverage = (image[:, count:].mean((1, 2, 3))[:, None] if mask else
+                        x.new_ones((len(x), 1)))
+            features.append(self.encoders[name](image) * (coverage > 0).to(x.dtype))
+            coverages.append(coverage)
+            offset += width
+        return self.classifier(torch.cat(features + coverages, dim=1))
+
+
 def build_model(config, num_classes, input_shape=None):
     """Construit un modèle enregistré ou importable via 'module:Constructeur'.
 
@@ -984,7 +1013,13 @@ def build_model(config, num_classes, input_shape=None):
             f"Modèle inconnu : {name}. Disponibles : {', '.join(list_models())}. "
             "Ou utiliser module:Constructeur."
         )
-    expected_shape = (1 if config.mode == "raw" else 3, config.size, config.size)
+    modalities = getattr(config, "modalities", None)
+    from .modalities import channel_count, layout
+    if modalities is not None and name not in {"cnn", "image_cnn", "multi_encoder_cnn"}:
+        raise ValueError("Explicit modalities require cnn, image_cnn or multi_encoder_cnn")
+    channels = (channel_count(modalities, config.legacy, config.include_masks) if modalities is not None
+                else (1 if config.mode == "raw" else 3))
+    expected_shape = (channels, config.size, config.size)
     if input_shape is not None and tuple(input_shape) != expected_shape:
         raise ValueError(
             f"input_shape doit correspondre aux données : {expected_shape}"
@@ -994,6 +1029,10 @@ def build_model(config, num_classes, input_shape=None):
         raise ValueError(
             "input_shape, in_channels et num_classes sont déduits des données"
         )
+    if name == "multi_encoder_cnn":
+        if modalities is None:
+            raise ValueError("multi_encoder_cnn requires explicit modalities")
+        parameters["modality_layout"] = layout(modalities, config.legacy, config.include_masks)
     signature = inspect.signature(constructor)
     automatic = {
         "input_shape": expected_shape,

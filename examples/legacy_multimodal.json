@@ -1,0 +1,47 @@
+{
+  "data_dir": "scratch/data/PSZ2/classified",
+  "output_dir": "results/legacy",
+  "split": {
+    "split_seed": 42,
+    "test_size": 0.2,
+    "val_size": 0.2
+  },
+  "comparison_cohort": "all",
+  "experiments": [
+    {
+      "mode": "multimodal",
+      "task": "rr_rh",
+      "modalities": [
+        "radio",
+        "xray",
+        "legacy"
+      ],
+      "missing_modality_policy": "optional",
+      "include_masks": true,
+      "legacy": {
+        "raw_root": "scratch/data/PSZ2/fits",
+        "bands": [
+          "g",
+          "r",
+          "z"
+        ],
+        "normalization": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10
+        }
+      },
+      "size": 128,
+      "batch_size": 8,
+      "epochs": 50,
+      "patience": 8,
+      "device": "mps",
+      "processed_dir": "processed",
+      "seed": 42,
+      "name": "legacy_multimodal",
+      "model": "multi_encoder_cnn"
+    }
+  ]
+}

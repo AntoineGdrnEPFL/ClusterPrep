@@ -88,9 +88,17 @@ class ExperimentConfig(TrainingConfig):
     min_delta: float = 0.0
     class_weight: str = "balanced"
     model_params: dict = field(default_factory=dict)
+    modalities: list | None = None
+    missing_modality_policy: str = "optional"
+    legacy: dict = field(default_factory=dict)
+    include_masks: bool = True
+    normalization: dict = field(default_factory=dict)
+    normalization_bounds: dict = field(default_factory=dict)
 
     def __post_init__(self):
         super().__post_init__()
+        from .modalities import validate_modalities
+        validate_modalities(self.modalities, self.missing_modality_policy, self.legacy, self.include_masks)
         from .radio_noise import validate_radio_noise
         if not isinstance(self.augmentation, dict) or set(self.augmentation) - {"radio_noise", "zoom"}:
             raise ValueError("augmentation: seules les clés radio_noise et zoom sont acceptées")
@@ -254,6 +262,8 @@ def _validate_splits(
 
 
 def _inputs(batch, mode, model=None):
+    if "image" in batch:
+        return batch["image"]
     names = ("raw",) if mode == "raw" else ("raw", "chandra", "chandra_mask")
     x = torch.cat([batch[name] for name in names], dim=1)
     if model is not None and getattr(
@@ -1058,6 +1068,10 @@ def run_experiment(
     if not isinstance(use_val, bool):
         raise ValueError("use_val doit être booléen")
     data_info = merge_cluster_labels(data_info)
+    if config.modalities is not None:
+        from .io import discover_legacy
+        data_info = discover_legacy(data_info, config.legacy.get("raw_root"),
+                                   config.legacy.get("filename_pattern", "{cluster_id}_legacy.fits"))
     class_names = ("RR", "RH") if config.task == "rr_rh" else tuple(class_names)
     if config.task == "de_nde" and set(class_names) != {"DE", "NDE"}:
         class_names = CLASS_NAMES
@@ -1082,7 +1096,7 @@ def run_experiment(
     if splits is None:
         splits = split_data_keys(
             data_info,
-            mode=(config.mode if config.task == "rr_rh" else "raw"),
+            mode=(config.mode if config.task == "rr_rh" and config.modalities is None else "raw"),
             task=config.task,
             candidate_policy=config.candidate_policy,
             seed=config.seed,
@@ -1134,7 +1148,11 @@ def run_experiment(
         transfer_splits_report = {"sources": audits,
                                   "independent_evaluation": all(a["independent_evaluation"] for a in audits.values())}
     base_splits = splits
-    if config.mode == "pair":
+    if config.modalities is not None and config.missing_modality_policy == "required":
+        from .modalities import PATHS
+        splits = tuple([k for k in keys if all(data_info[k].get(PATHS[m]) for m in config.modalities)]
+                       for keys in splits)
+    if config.modalities is None and config.mode == "pair":
         splits = tuple(
             [k for k in keys if data_info[k].get("chandra_path")] for keys in splits
         )
@@ -1213,6 +1231,23 @@ def _run(
     torch.manual_seed(config.seed)
     device = torch.device(config.device)
 
+    if config.modalities is not None:
+        from .modalities import fit_normalization
+        fitting = ClusterDataset(info, splits[0], class_names, mode=config.mode, size=config.size,
+                                 task=config.task, candidate_policy=config.candidate_policy,
+                                 processed_dir=config.processed_dir, modalities=config.modalities,
+                                 legacy=config.legacy, include_masks=config.include_masks,
+                                 normalization=config.normalization,
+                                 missing_modality_policy=config.missing_modality_policy)
+        # Refit per fold; never reuse another fold's bounds during training.
+        bounds = fit_normalization(fitting)
+        config = replace(config, normalization_bounds=bounds)
+        _json(run_dir / "normalization.json", {"train_keys": list(splits[0]), "bounds": bounds,
+                                              "normalization": config.normalization,
+                                              "legacy": config.legacy.get("normalization", {})})
+        _json(run_dir / "modality_exclusions.json", {
+            name: [k for k in base if k not in set(used)]
+            for name, base, used in zip(("train", "validation", "test"), base_splits, splits)})
     output_names = tuple(class_names)
     model = factory(
         config,
@@ -1263,7 +1298,7 @@ def _run(
         config.verbose,
     )
     preparation = None
-    if config.processed_dir is not None:
+    if config.processed_dir is not None and config.modalities is None:
         preparation = prepare_processed(
             info,
             [k for keys in splits for k in keys],
@@ -1314,6 +1349,12 @@ def _run(
             keys,
             class_names,
             mode=config.mode,
+            modalities=config.modalities,
+            missing_modality_policy=config.missing_modality_policy,
+            legacy=config.legacy,
+            include_masks=config.include_masks,
+            normalization=config.normalization,
+            normalization_bounds=config.normalization_bounds,
             size=config.size,
             augment=config.augment and i == 0,
             zoom=zoom,
@@ -1431,6 +1472,13 @@ def _run(
     }
     sources = {k: _source_signature(info[k]) for keys in base_splits for k in keys}
     split_manifest["source_signatures"] = sources
+    if config.modalities is not None:
+        split_manifest["optical_source_signatures"] = {
+            k: ({"path": str(Path(info[k]["legacy_path"]).resolve()),
+                 "bytes": Path(info[k]["legacy_path"]).stat().st_size,
+                 "mtime_ns": Path(info[k]["legacy_path"]).stat().st_mtime_ns}
+                if info[k].get("legacy_path") else None)
+            for keys in base_splits for k in keys}
     _json(run_dir / "splits.json", split_manifest)
     _json(
         run_dir / "split_distribution.json",
@@ -1696,7 +1744,7 @@ def run_experiments(
             )
             continue
         split_mode = (
-            "pair" if config.task == "rr_rh" and config.mode == "pair" else "raw"
+            "pair" if config.task == "rr_rh" and config.mode == "pair" and config.modalities is None else "raw"
         )
         split_key = (config.task, config.candidate_policy, split_mode)
         if supplied_splits is None and split_key not in split_cache:
@@ -1782,6 +1830,7 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
             "name": result["config"]["name"],
             "mode": result["config"]["mode"],
             "model": result["config"]["model"],
+            "modalities": "+".join(result["config"].get("modalities") or []),
             "seed": result["config"]["seed"],
             "best_epoch": result["best_epoch"],
             "seconds": result["seconds"],

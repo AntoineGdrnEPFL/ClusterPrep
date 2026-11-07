@@ -107,6 +107,12 @@ class TrainingRun:
 
     @property
     def configuration_id(self):
+        # Explicit, user-confirmed grouping without rewriting training provenance.
+        override = self.metadata.get('analysis_configuration_id')
+        if override is not None:
+            if not isinstance(override, str) or not re.fullmatch(r'[0-9a-f]{20}', override):
+                raise ValueError('analysis_configuration_id must be a 20-character hexadecimal identifier')
+            return override
         # Seed stays in the configuration: folds of a seeded protocol may aggregate,
         # independent seeds must not silently count as extra folds.
         ignored = {'name', 'verbose', 'device', 'num_workers', 'cache'}

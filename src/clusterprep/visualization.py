@@ -51,9 +51,9 @@ def _save(fig, output_path):
     return fig
 
 
-def plot_sample(sample, output_path=None):
+def plot_sample(sample, output_path=None, *, chandra_contours=False):
     """Affiche un échantillon du Dataset, dont le masque de couverture Chandra."""
-    channels = [name for name in ("raw", "chandra", "chandra_mask") if name in sample]
+    channels = [name for name in ("raw", "chandra", "legacy", "chandra_mask", "legacy_mask") if name in sample]
     fig, axes = plt.subplots(1, len(channels), figsize=(5 * len(channels), 4),
                              squeeze=False, constrained_layout=True)
     for ax, name in zip(axes[0], channels):
@@ -61,10 +61,22 @@ def plot_sample(sample, output_path=None):
         if hasattr(value, "detach"):
             value = value.detach().cpu().numpy()
         image = np.asarray(value).squeeze()
+        if image.ndim == 3:
+            image = image.mean(axis=0)  # Display summary; model retains separate bands.
         artist = ax.imshow(image, origin="lower", vmin=0, vmax=1,
                            cmap="viridis" if name == "raw" else "inferno")
         ax.set_title({"raw": "Radio normalisé", "chandra": "Chandra normalisé",
-                      "chandra_mask": "Couverture Chandra"}[name])
+                      "chandra_mask": "Couverture Chandra", "legacy": "LEGACY (moyenne des bandes)",
+                      "legacy_mask": "Couverture LEGACY"}[name])
+        if name in {"legacy", "chandra"} and not sample.get("has_" + name, True):
+            ax.text(.5, .5, "Observation absente", ha="center", transform=ax.transAxes, color="white")
+        if chandra_contours and name in {"raw", "legacy"} and "chandra" in sample:
+            contours = sample["chandra"]
+            if hasattr(contours, "detach"):
+                contours = contours.detach().cpu().numpy()
+            contours = np.asarray(contours).squeeze()
+            if np.isfinite(contours).any() and np.nanmax(contours) > np.nanmin(contours):
+                ax.contour(contours, levels=[.5, .75, .9], colors="cyan", linewidths=.6)
         ax.set_xlabel("Pixel x")
         ax.set_ylabel("Pixel y")
         fig.colorbar(artist, ax=ax, shrink=.8)

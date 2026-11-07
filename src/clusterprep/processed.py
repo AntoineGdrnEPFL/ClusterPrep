@@ -75,7 +75,7 @@ def _write_image(path, name, result, identity):
     header["AUGMENT"] = False
     header["IMTYPE"] = name.upper()
     header["PROVEN"] = json.dumps(identity, sort_keys=True)
-    data = result[name].astype(np.uint8 if name == "chandra_mask" else np.float32)
+    data = result[name].astype(np.uint8 if name.endswith("_mask") else np.float32)
     fd, temp = tempfile.mkstemp(prefix=".building-", suffix=".fits", dir=path.parent)
     os.close(fd)
     try:
@@ -169,3 +169,49 @@ def prepare_processed(data_info, keys, mode="raw", size=128, processed_dir="proc
     if counts["fits_warnings"]:
         message(f"{counts['fits_warnings']} avertissements de métadonnées FITS → {log_path}", verbose)
     return counts
+
+
+def load_processed_optical(info, size=128, processed_dir="processed", *, bands=None,
+                           hdu=None, force=False, return_status=False):
+    """Independent optical cache: no writes to historical RAW/CHANDRA products."""
+    import hashlib
+    from .preprocessing import preprocess_optical
+    options = {"bands": bands, "hdu": hdu}
+    identity = _identity(info, "raw", size)
+    source = Path(info["legacy_path"]).resolve()
+    stat = source.stat()
+    identity.update(mode="legacy", optical_version=1, options=options,
+                    optical_source=[str(source), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns])
+    suffix = hashlib.sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()[:12]
+    base = processed_paths(info, "raw", size, processed_dir)["raw"]
+    paths = {name: base.with_name(base.name.replace("RAW", name.upper()).replace(".fits", f"_{suffix}.fits"))
+             for name in ("legacy", "legacy_mask")}
+    existed = any(p.exists() for p in paths.values())
+    if not force:
+        try:
+            result = {}
+            for name, path in paths.items():
+                with fits.open(path, checksum=True) as hdul:
+                    item = hdul[0]
+                    if (item.verify_checksum() != 1 or item.verify_datasum() != 1
+                            or json.loads(item.header["PROVEN"]) != identity
+                            or item.header["IMTYPE"] != name.upper()
+                            or item.header["CPVER"] != CACHE_VERSION):
+                        raise ValueError("Invalid optical cache")
+                    data = np.array(item.data, dtype=bool if name.endswith("mask") else np.float32)
+                    if data.ndim != 3 or data.shape[1:] != (size, size):
+                        raise ValueError("Invalid optical cache dimensions")
+                    result.update({name: data, "factor": item.header["DSFACTOR"],
+                                   "wcs": WCS(item.header).celestial})
+            if result["legacy"].shape != result["legacy_mask"].shape:
+                raise ValueError("Inconsistent optical mask")
+            return (result, "reused") if return_status else result
+        except (OSError, ValueError, KeyError, IndexError):
+            pass
+    result = preprocess_optical(info, size, bands, hdu)
+    if source.stat().st_mtime_ns != stat.st_mtime_ns or _identity(info, "raw", size)["sources"] != identity["sources"]:
+        raise RuntimeError("Sources changed during optical preprocessing")
+    for name, path in paths.items():
+        _write_image(path, name, result, identity)
+    status = "rebuilt" if existed else "created"
+    return (result, status) if return_status else result

@@ -114,7 +114,7 @@ def resolve_module(model, name):
     if any(id(m) not in registered for m in groups.values()):
         raise ValueError("Transfer groups must be registered modules")
     first, *rest = name.split(".")
-    aliases = {"radio_encoder": "radio", "xray_encoder": "xray", "classifier": "head"}
+    aliases = {"radio_encoder": "radio", "xray_encoder": "xray", "classifier": "head", "optical_encoder": "legacy", "legacy_encoder": "legacy"}
     if first in groups:
         module = groups[first]
     else:

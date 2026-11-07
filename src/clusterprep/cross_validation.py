@@ -382,7 +382,7 @@ def run_cross_validation(info, config, output_dir, *, splits, class_names,
         # Eligibility filters never move a cluster across the external boundary.
         original = {name: list(keys) for name, keys in zip(('train', 'validation', 'test'), splits)}
         eligible = lambda k: eligible_for_task(info[k], config.task, config.candidate_policy) and (
-            config.mode != 'pair' or info[k].get('chandra_path'))
+            config.modalities is not None or config.mode != 'pair' or info[k].get('chandra_path'))
         train = [k for k in splits[0] + splits[1] if eligible(k)]
         test = [k for k in splits[2] if eligible(k)]
         _validate_splits(info, (train, [], test), class_names, config.task,
@@ -440,7 +440,8 @@ def run_cross_validation(info, config, output_dir, *, splits, class_names,
                 _check_sources(audit)
                 histories.append([json.loads(line) for line in (fold_dir / 'history.jsonl').read_text().splitlines()])
                 paths.append(str(fold_dir.relative_to(root)))
-                sizes.append(len(fold['validation']))
+                actual_splits = _read(fold_dir / 'splits.json')
+                sizes.append(len(actual_splits['validation']))
             aggregation = aggregate_curves(histories, sizes, cv.selection_metric, cv.selection_mode)
             # A phase candidate is evaluated at its terminal state, never at independent phase minima.
             score = aggregation['curves'][-1]['mean'] if phases else aggregation['score']
@@ -466,7 +467,11 @@ def run_cross_validation(info, config, output_dir, *, splits, class_names,
         predictions = []
         for fold_path in selected['fold_paths']:
             predictions.extend(_read(root / fold_path / 'validation_epochs' / f"epoch_{selected['epochs']}.json"))
-        if len(predictions) != len(train) or {p['key'] for p in predictions} != set(train):
+        expected_train = train
+        if config.modalities is not None and config.missing_modality_policy == "required":
+            from .modalities import PATHS
+            expected_train = [k for k in train if all(info[k].get(PATHS[m]) for m in config.modalities)]
+        if len(predictions) != len(expected_train) or {p['key'] for p in predictions} != set(expected_train):
             raise ValueError('Incomplete out-of-fold predictions at selected epoch')
         from .metrics import select_multilabel_thresholds
         thresholds = None
@@ -481,7 +486,7 @@ def run_cross_validation(info, config, output_dir, *, splits, class_names,
         _dump(root / 'cv/oof_predictions.json', predictions)
         summary = {'selection': selection, 'trials': trials, 'initialization_audit': audit,
                    'threshold_selection': thresholds,
-                   'preprocessing': {'normalization': 'deterministic per-image percentiles 30/99 and asinh alpha=10; no population fit',
+                   'preprocessing': {'normalization': ('configured per-modality normalization; population bounds fit on each sub-train, then refit on full train' if config.modalities is not None else 'deterministic per-image percentiles 30/99 and asinh alpha=10; no population fit'),
                                      'class_weights': 'computed only from each sub-train; recomputed on full train for final fit',
                                      'batchnorm': 'fresh model/source buffers per trial and fold; updated only in training',
                                      'cache': 'only deterministic per-image FITS/scattering transforms are shared'},

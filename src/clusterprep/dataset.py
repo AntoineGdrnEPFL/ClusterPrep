@@ -36,8 +36,31 @@ class ClusterDataset(Dataset):
         radio_noise=None,
         training=False,
         zoom=None,
+        modalities=None,
+        missing_modality_policy="optional",
+        legacy=None,
+        include_masks=True,
+        normalization=None,
+        normalization_bounds=None,
     ):
 
+        from .modalities import validate_modalities, PATHS
+        from .io import discover_legacy
+        validate_modalities(modalities, missing_modality_policy, legacy, include_masks)
+        self.modalities = modalities
+        self.legacy = legacy or {}
+        self.include_masks = include_masks
+        self.normalization = normalization or {}
+        self.normalization_bounds = normalization_bounds or {}
+        if modalities is not None:
+            if scattering_dir is not None:
+                raise ValueError("Explicit modalities do not support precomputed scattering")
+            data_info = discover_legacy(data_info, self.legacy.get("raw_root"),
+                                       self.legacy.get("filename_pattern", "{cluster_id}_legacy.fits"))
+            if missing_modality_policy == "required":
+                keys = [k for k in keys if all(data_info[k].get(PATHS[m]) for m in modalities)]
+            if augment and not training:
+                raise ValueError("Explicit modality augmentation is restricted to training")
         if mode not in {"raw", "pair", "multimodal"}:
             raise ValueError("mode doit être raw, pair ou multimodal")
         if not isinstance(size, int) or size < 1:
@@ -79,7 +102,7 @@ class ClusterDataset(Dataset):
         for key in self.keys:
             info = data_info[key]
             if not include_targets:
-                if mode == "pair" and not info.get("chandra_path"):
+                if modalities is None and mode == "pair" and not info.get("chandra_path"):
                     raise ValueError(f"Fichier CHANDRA manquant : {key}")
                 continue
             labels = labels_for(info)
@@ -97,7 +120,7 @@ class ClusterDataset(Dataset):
                     raise ValueError(f"Cluster non éligible RR/RH : {key}")
             else:
                 raise ValueError(f"Tâche inconnue : {self.task}")
-            if mode == "pair" and not info.get("chandra_path"):
+            if modalities is None and mode == "pair" and not info.get("chandra_path"):
                 raise ValueError(f"Fichier CHANDRA manquant : {key}")
 
     def __len__(self):
@@ -113,6 +136,8 @@ class ClusterDataset(Dataset):
         return torch.tensor(target, dtype=torch.long if self.task in BINARY_TASKS else torch.float32)
 
     def __getitem__(self, index):
+        if self.modalities is not None:
+            return self._modality_item(index)
         source_index, variant_index = self._decode_index(index)
         info = self.data_info[self.keys[source_index]]
         use_pair = self.mode != "raw" and bool(info.get("chandra_path"))
@@ -238,6 +263,7 @@ class ClusterDataset(Dataset):
             "raw_path": info["raw_path"],
             "chandra_path": info.get("chandra_path"),
             "scattering_path": info.get("scattering_path"),
+            "legacy_path": info.get("legacy_path"),
             "candidate_policy": self.candidate_policy,
             "rotation": angle,
             "flip_horizontal": flip,
@@ -245,3 +271,75 @@ class ClusterDataset(Dataset):
             "source_index": source_index,
             "variant_index": variant_index,
         }
+
+
+    def _modality_images(self, info):
+        from .processed import load_processed_optical
+        from .preprocessing import preprocess_optical
+        paired = "xray" in self.modalities and bool(info.get("chandra_path"))
+        mode = "pair" if paired else "raw"
+        images = (preprocess(info, mode, self.size) if self.processed_dir is None else
+                  load_processed(info, mode, self.size, self.processed_dir))
+        if "legacy" in self.modalities and info.get("legacy_path"):
+            options = dict(bands=self.legacy.get("bands", ["g", "r", "z"]), hdu=self.legacy.get("hdu"))
+            optical = (preprocess_optical(info, self.size, **options) if self.processed_dir is None else
+                       load_processed_optical(info, self.size, self.processed_dir, **options))
+            images.update(optical)
+        return images
+
+    def _modality_item(self, index):
+        from .modalities import layout, NAMES, PATHS, normalize_planes
+        source_index, variant = self._decode_index(index)
+        key = self.keys[source_index]
+        info = self.data_info[key]
+        # Disk cache validates source provenance on every read.
+        images = self._modality_images(info)
+        sample = {"cluster_id": info["cluster_id"], "key": key,
+                  "has_chandra": bool(info.get("chandra_path")),
+                  "has_legacy": bool(info.get("legacy_path"))}
+        stacked = []
+        availability = []
+        for modality, count, with_mask in layout(self.modalities, self.legacy, self.include_masks):
+            name = NAMES[modality]
+            image = np.asarray(images.get(name, np.zeros((count, self.size, self.size))), dtype=np.float32)
+            if image.ndim == 2:
+                image = image[None]
+            mask = np.asarray(images.get(name + "_mask", np.isfinite(image)), dtype=bool).reshape(image.shape)
+            if not info.get(PATHS[modality]):
+                mask[:] = False
+            if image.shape != (count, self.size, self.size):
+                raise ValueError(f"Unexpected {modality} shape: {image.shape}")
+            options = (self.legacy.get("normalization", {}) if modality == "legacy" else
+                       self.normalization.get(modality, {}))
+            bounds = self.normalization_bounds.get(modality)
+            if options.get("scope", "image") == "train" and bounds is None:
+                raise ValueError(f"Train normalization bounds missing for {modality}")
+            if modality == "radio" and self.noise_enabled:
+                context = prepare_noise_context(images, info, self.processed_dir)
+                if bounds is None:
+                    bounds = [np.quantile(image[np.isfinite(image)], [.30, .99])]
+                image = add_radio_noise(image[0], context, self.radio_noise)[None]
+            image = normalize_planes(image, mask, options, bounds)
+            tensor, coverage = torch.from_numpy(image), torch.from_numpy(mask.astype(np.float32))
+            if self.augment:
+                angle, flip, scale = decode_variant(variant, self.zoom)
+                # Existing validity-weighted geometry, same grid for every band and mask.
+                transformed = [transform_aligned(torch.stack((tensor[i], tensor[i], coverage[i])),
+                                                 angle, flip, scale, self.zoom) for i in range(count)]
+                tensor = torch.stack([t[1] for t in transformed])
+                coverage = torch.stack([t[2] for t in transformed])
+            sample[name] = tensor
+            sample[name + "_mask"] = coverage
+            stacked.append(tensor)
+            if with_mask:
+                stacked.append(coverage)
+            availability.append(bool(info.get(PATHS[modality])))
+        sample["image"] = torch.cat(stacked)
+        sample["availability"] = torch.tensor(availability, dtype=torch.bool)
+        if self.include_targets:
+            sample["label"] = self._make_target(info)
+            if self.task == "rr_rh":
+                sample["label_mask"] = torch.from_numpy(task_target(info, self.task, self.candidate_policy)[1])
+            if self.task in SUBTYPE_TASKS:
+                sample["annotations"] = "+".join(sorted(labels_for(info)))
+        return sample
