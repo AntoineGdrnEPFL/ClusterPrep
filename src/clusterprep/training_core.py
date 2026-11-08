@@ -29,8 +29,22 @@ class TrainingConfig:
     use_early_stopping: bool = True
     patience: int = 50
     drop_last_train: bool = True
+    use_compile: bool | str = "auto"
+    compile_backend: str = "inductor"
+    compile_mode: str = "default"
+    compile_dynamic: bool | None = None
 
     def __post_init__(self):
+        if not isinstance(self.use_compile, bool) and self.use_compile != "auto":
+            raise ValueError("use_compile doit être booléen ou 'auto'")
+        if not isinstance(self.compile_backend, str) or not self.compile_backend.strip():
+            raise ValueError("compile_backend doit être une chaîne non vide")
+        if self.compile_mode not in {
+            "default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"
+        }:
+            raise ValueError("compile_mode invalide")
+        if self.compile_dynamic is not None and not isinstance(self.compile_dynamic, bool):
+            raise ValueError("compile_dynamic doit être booléen ou None")
         for name in ("epochs", "batch_size", "patience"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -170,7 +184,33 @@ def _map_tensors(value, function):
 
 
 def move_batch_to_device(batch, device):
-    return _map_tensors(batch, lambda tensor: tensor.to(device))
+    non_blocking = torch.device(device).type == "cuda"
+    return _map_tensors(
+        batch, lambda tensor: tensor.to(device, non_blocking=non_blocking)
+    )
+
+
+def compile_training_model(model, config, device):
+    """Create one training callable, retaining the original module for state/transfer.
+
+    Compilation is lazy. Backend errors propagate instead of silently restarting
+    a forward that may already have changed BatchNorm buffers or consumed RNG.
+    Dynamo handles changed batch sizes and freeze/unfreeze guards when necessary.
+    """
+    enabled = config.use_compile
+    if enabled == "auto":
+        enabled = torch.device(device).type in {"cuda", "mps"}
+    if not enabled:
+        return model
+    if not callable(getattr(torch, "compile", None)):
+        raise RuntimeError("use_compile nécessite PyTorch >= 2 ; utiliser use_compile=false")
+    return torch.compile(
+        model,
+        backend=config.compile_backend,
+        mode=config.compile_mode,
+        dynamic=config.compile_dynamic,
+        fullgraph=False,
+    )
 
 
 def mixup_batch(inputs, target, alpha=0.4):

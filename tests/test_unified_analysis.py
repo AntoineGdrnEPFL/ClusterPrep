@@ -135,6 +135,26 @@ def test_config_fold_aggregation_missing_folds_and_repetitions(make_run):
     assert a.aggregate_metrics(a.metrics_table([runs[0]])).empty
 
 
+def test_fitted_normalization_bounds_aggregate_without_losing_policy(make_run):
+    runs = [a.load_run(make_run(str(i), fold=i)) for i in range(3)]
+    for i, run in enumerate(runs):
+        run.config.update(
+            modalities=['radio', 'legacy'],
+            legacy={'normalization': {'scope': 'train', 'method': 'asinh_percentile',
+                                      'lower_percentile': 30, 'upper_percentile': 99}},
+            normalization_bounds={'legacy': [[.001 * (i + 1), .2 + .01 * i]]})
+    original = json.dumps([run.config for run in runs], sort_keys=True)
+    summary = a.aggregate_metrics(a.metrics_table(runs))
+    assert len(summary) == 1
+    assert summary.iloc[0].n_folds == 3
+    assert summary.iloc[0].n_runs == 3
+    assert json.dumps([run.config for run in runs], sort_keys=True) == original
+    runs[1].config['legacy']['normalization']['upper_percentile'] = 95
+    assert runs[0].configuration_id != runs[1].configuration_id
+    runs[2].config['modalities'] = ['radio']
+    assert runs[0].configuration_id != runs[2].configuration_id
+
+
 def test_explicit_configuration_group_preserves_provenance(make_run):
     reference = a.load_run(make_run('reference', fold=0))
     path = make_run('other', fold=1)

@@ -115,7 +115,10 @@ class TrainingRun:
             return override
         # Seed stays in the configuration: folds of a seeded protocol may aggregate,
         # independent seeds must not silently count as extra folds.
-        ignored = {'name', 'verbose', 'device', 'num_workers', 'cache'}
+        # Bounds are fitted on each fold's training samples, not hyperparameters.
+        # Keep the normalization policy in config and the fitted values in the
+        # original artifacts, but do not split a CV configuration by those values.
+        ignored = {'name', 'verbose', 'device', 'num_workers', 'cache', 'normalization_bounds'}
         config = {k: v for k, v in self.config.items() if k not in ignored}
         split = {k: v for k, v in self.splits.get('split_config', {}).items() if k != 'fold_index'}
         return fingerprint([config, split, self.stage, self.metadata.get('normalization'),

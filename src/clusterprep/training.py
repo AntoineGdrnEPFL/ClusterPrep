@@ -42,6 +42,7 @@ from .training_core import (
     mixup_batch,
     move_batch_to_device,
     forward_model,
+    compile_training_model,
 )
 from .transfer import (
     TransferConfig,
@@ -302,6 +303,7 @@ def _epoch(
     scheduler=None,
     input_adapter=None,
     frozen_modules=(),
+    training_model=None,
 ):
     training = optimizer is not None
     model.train(training)
@@ -364,7 +366,9 @@ def _epoch(
                     inputs, target_a, target_b, lam = mixup_batch(
                         inputs, target, config.mixup_alpha
                     )
-            logits = forward_model(model, inputs)
+            logits = forward_model(
+                training_model if training and training_model is not None else model, inputs
+            )
             if (
                 logits.shape != (len(target), len(class_names))
                 or not torch.isfinite(logits).all()
@@ -387,11 +391,10 @@ def _epoch(
                     raise ValueError("Targets binaires finis requis")
             # CE simple conservée séparément pour les comparaisons de cohortes.
             if getattr(config, "task", "de_nde") in BINARY_TASKS:
-                losses = nn.functional.cross_entropy(
-                    logits,
-                    target,
-                    reduction="none",
-                )
+                if not training:
+                    losses = nn.functional.cross_entropy(
+                        logits, target, reduction="none"
+                    )
                 if mixed:
                     loss = lam * criterion(logits, target_a) + (1 - lam) * criterion(
                         logits, target_b
@@ -402,10 +405,11 @@ def _epoch(
                 mask = batch.get("label_mask", torch.ones_like(target))
                 if mask.shape != target.shape or not ((mask == 0) | (mask == 1)).all():
                     raise ValueError("Masque de labels binaire [B, 2] requis")
-                elements = nn.functional.binary_cross_entropy_with_logits(
-                    logits, target, reduction="none"
-                )
-                losses = (elements * mask).sum(1) / mask.sum(1).clamp_min(1)
+                if not training:
+                    elements = nn.functional.binary_cross_entropy_with_logits(
+                        logits, target, reduction="none"
+                    )
+                    losses = (elements * mask).sum(1) / mask.sum(1).clamp_min(1)
 
                 def masked_loss(y, m):
                     values = nn.functional.binary_cross_entropy_with_logits(
@@ -597,6 +601,15 @@ class Trainer:
         n_train=None,
     ):
         self.model = model.to(device)
+        # Keep model identity and checkpoint keys independent of OptimizedModule.
+        # Build once per Trainer, never once per epoch or batch.
+        self.training_model = compile_training_model(self.model, config, device)
+        if self.training_model is not self.model:
+            message(
+                f"torch.compile activé : {config.compile_backend}, {config.compile_mode}, "
+                f"dynamic={config.compile_dynamic}. Les premiers lots incluent la compilation.",
+                getattr(config, "verbose", False),
+            )
         self.config, self.class_names, self.device = config, tuple(class_names), device
         self.input_adapter = input_adapter
         self.criterion = build_criterion(config, class_counts, device, n_train=n_train)
@@ -638,6 +651,7 @@ class Trainer:
             input_adapter=self.input_adapter,
             description=description,
             frozen_modules=self.frozen_modules,
+            training_model=self.training_model,
         )
 
     def evaluate(self, loader, description=None):
@@ -1394,6 +1408,7 @@ def _run(
                 worker_init_fn=_seed_worker,
                 generator=generator,
                 persistent_workers=config.num_workers > 0,
+                pin_memory=torch.device(device).type == "cuda",
             )
         )
     trainer = Trainer(

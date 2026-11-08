@@ -160,6 +160,10 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
             "gradient_clip_norm": "Norme maximale du gradient (0 pour désactiver)",
             "use_early_stopping": "Activer l'arrêt anticipé (oui/non)",
             "drop_last_train": "Exclure le dernier lot train incomplet (oui/non)",
+            "use_compile": "Compilation du modèle (auto, oui/non)",
+            "compile_backend": "Backend torch.compile",
+            "compile_mode": "Mode torch.compile (default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs)",
+            "compile_dynamic": "Formes dynamiques torch.compile (null, true, false)",
         }
         while True:
             print_fn(
@@ -200,7 +204,9 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
                     config = replace(config, **{key: False if key == "use_early_stopping" else "fixed"})
                     continue
                 default = getattr(config, key)
-                if key in {"thresholds", "threshold_grid", "training_phases", "cross_validation"}:
+                if key == "use_compile":
+                    parser = lambda value: "auto" if value.strip().lower() == "auto" else boolean(value)
+                elif key in {"thresholds", "threshold_grid", "training_phases", "cross_validation", "compile_dynamic"}:
                     parser = json.loads
                 elif key == "processed_dir":
                     default = path(default) if default is not None else None

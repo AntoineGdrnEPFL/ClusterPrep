@@ -347,3 +347,57 @@ Le second script sélectionne 20 amas réels, avec et sans Chandra, répartis en
 les métriques, une comparaison CSV et les courbes d'apprentissage. Ces scores
 vérifient le fonctionnement de la chaîne ; ils ne mesurent pas les performances
 d'un modèle entraîné pour l'étude scientifique.
+
+## Accélération avec `torch.compile`
+
+Le moteur compile une seule fois le modèle d'entraînement par `Trainer`, après
+son placement sur le device. Les configurations existantes utilisent désormais
+`use_compile: "auto"` : compilation sur MPS (Mac Apple Silicon) et CUDA,
+exécution habituelle sur CPU. Sur Mac, les expériences avec `device: "mps"`
+en bénéficient donc sans modifier leur JSON.
+Pour régler explicitement une expérience JSON :
+
+```json
+{
+  "use_compile": true,
+  "compile_backend": "inductor",
+  "compile_mode": "default",
+  "compile_dynamic": null
+}
+```
+
+Ces champs sont aussi disponibles dans `TrainingConfig`, `ExperimentConfig` et
+l'assistant `createconfig`. `false` désactive la compilation. `true` permet de
+l'essayer aussi sur CPU ; le support et les performances du backend sur MPS
+varient selon la version de PyTorch et les opérations du modèle. PyTorch 2 et
+les dépendances du backend choisi doivent être installés sur la machine cible.
+Une erreur de compilation est propagée, sans relancer silencieusement un forward
+qui aurait déjà modifié les statistiques BatchNorm ou consommé des nombres aléatoires.
+
+Sur MPS, conserver `compile_backend: "inductor"` et `compile_mode: "default"`.
+Les CUDA graphs de `reduce-overhead` ne concernent pas Metal. La mémoire
+épinglée et les transferts CUDA décrits ci-dessous ne sont pas activés sur MPS.
+Sur CUDA, comparer ensuite `reduce-overhead` pour les
+petits modèles/lots (CUDA graphs, mémoire supplémentaire possible), ou
+`max-autotune` pour les longues expériences (compilation plus coûteuse).
+`compile_dynamic: null` laisse PyTorch spécialiser puis généraliser les formes
+si nécessaire. `true` demande des formes dynamiques dès le départ ; `false`
+spécialise les formes et peut recompiler pour les lots de tailles différentes.
+`drop_last_train: true` conserve des lots fixes ; la validation garde toujours
+tous les exemples. Une modification du gel des modules peut également entraîner
+une recompilation lors d'une nouvelle phase de transfert.
+
+Seul le modèle utilisé pour le forward/backward d'entraînement est compilé.
+MixUp, l'optimiseur, OneCycleLR, les métriques, la validation et les prédictions
+restent hors compilation. Le module original conserve ses paramètres et ses
+clés de checkpoints, sans préfixe `_orig_mod.` : chargement, early stopping,
+transfert et analyses restent compatibles. Les pertes individuelles destinées
+aux exports sont calculées seulement en évaluation. Sur CUDA, les DataLoaders
+utilisent la mémoire épinglée et les transferts vers le GPU sont non bloquants.
+
+Pour mesurer le gain, comparer deux expériences identiques avec `use_compile`
+à `false` puis `true`, sur la même machine. Les premières époques incluent le
+coût de compilation : comparer les durées `seconds` des époques suivantes dans
+`history.csv`, ainsi que le temps total du run. Pour une courte expérience,
+la compilation peut coûter plus qu'elle ne rapporte. Aucun gain universel
+n'est garanti, notamment si le chargement des FITS domine le calcul.
