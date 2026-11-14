@@ -33,6 +33,9 @@ def protocol_id(run, split, cohort='all', threshold_dependent=True):
     if parts is None or run.status == 'invalid':
         return 'unverified-' + run.run_id
     split_config = {k: v for k, v in run.splits.get('split_config', {}).items() if k != 'fold_index'}
+    # Historical manifests omitted use_val; infer it from the recorded partition,
+    # not from a blanket default. Preserve explicit policies and training provenance.
+    split_config.setdefault('use_val', bool(parts['validation']))
     if run.fold is not None and (run.cv_plan or split_config.get('n_folds')):
         dataset = sorted(set().union(*map(set, parts.values())))
         plan = run.cv_plan or split_config
@@ -147,6 +150,7 @@ def aggregate_metrics(table, metrics=('macro_f1', 'roc_auc_macro')):
     for keys, group in complete.groupby(group_keys, dropna=False):
         row = dict(zip(group_keys, keys))
         expected = group.expected_folds.dropna()
+        row['radio_source'] = group.radio_source.iloc[0] if 'radio_source' in group else 'RAW'
         row.update(configuration_name='; '.join(sorted(set(group.configuration_name))),
                    run_names='; '.join(group.run_name), n_runs=len(group), n_folds=group.fold.nunique(),
                    expected_folds=expected.max() if len(expected) else None,

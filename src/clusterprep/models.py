@@ -978,30 +978,92 @@ def task_for_output_names(names):
 
 @register_model("multi_encoder_cnn")
 class MultiEncoderCNN(nn.Module):
-    """Variable independent ImageEncoders with masked latent concatenation."""
-    def __init__(self, input_shape, modality_layout, num_classes=2, fusion_hidden_dim=64):
+    """N ImageEncoders indépendants, fusion tardive et couvertures par modalité.
+
+    modality_layout: [(name, image_channels, has_mask), ...]
+    Ordre des canaux de x pour chaque modalité : images puis masques.
+    Exemple : radio(1), legacy(3+3), xray(1+1) => 9 canaux.
+    """
+
+    def __init__(
+        self,
+        input_shape,
+        modality_layout,
+        num_classes=2,
+        fusion_hidden_dim=64,
+        use_mask=True,
+        use_coverage=True,
+        dropout_rate=0.5,
+    ):
         super().__init__()
-        self.modality_layout = modality_layout
-        self.encoders = nn.ModuleDict({name: ImageEncoder((count * (2 if mask else 1), *input_shape[1:]))
-                                       for name, count, mask in modality_layout})
-        dimension = sum(e.output_dim for e in self.encoders.values()) + len(modality_layout)
-        self.classifier = nn.Sequential(nn.Linear(dimension, fusion_hidden_dim), nn.LeakyReLU(.2),
-                                        nn.Dropout(.5), nn.Linear(fusion_hidden_dim, num_classes))
+        if len(input_shape) != 3:
+            raise ValueError("input_shape doit être (C, H, W)")
+        if not modality_layout:
+            raise ValueError("Au moins une modalité est nécessaire")
+        self.input_shape = tuple(input_shape)
+        self.modality_layout = [tuple(item) for item in modality_layout]
+        self.use_mask = bool(use_mask)
+        self.use_coverage = bool(use_coverage)
+        names = [item[0] for item in self.modality_layout]
+        if len(names) != len(set(names)) or any(not isinstance(n, str) or not n for n in names):
+            raise ValueError("Les noms des modalités doivent être uniques et non vides")
+        for item in self.modality_layout:
+            if (len(item) != 3 or not isinstance(item[1], int)
+                    or isinstance(item[1], bool) or item[1] < 1
+                    or not isinstance(item[2], bool)):
+                raise ValueError(f"Entrée de modality_layout invalide : {item}")
+        expected_channels = sum(count * (2 if masked else 1)
+                                for _, count, masked in self.modality_layout)
+        if expected_channels != input_shape[0]:
+            raise ValueError(
+                f"modality_layout décrit {expected_channels} canaux, "
+                f"mais input_shape en annonce {input_shape[0]}"
+            )
+
+        _, height, width = input_shape
+        self.encoders = nn.ModuleDict({
+            name: ImageEncoder((count * (1 + int(masked and self.use_mask)), height, width))
+            for name, count, masked in self.modality_layout
+        })
+        latent_dim = sum(encoder.output_dim for encoder in self.encoders.values())
+        coverage_dim = len(self.modality_layout) if self.use_coverage else 0
+        self.classifier = nn.Sequential(
+            nn.Linear(latent_dim + coverage_dim, fusion_hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(dropout_rate),
+            nn.Linear(fusion_hidden_dim, num_classes),
+        )
 
     def transfer_modules(self):
         return {**dict(self.encoders.items()), "head": self.classifier}
 
     def forward(self, x):
-        features, coverages = [], []
+        if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
+            raise ValueError(f"Entrée attendue : [B, {self.input_shape}]")
+        features = []
+        coverages = []
         offset = 0
-        for name, count, mask in self.modality_layout:
-            width = count * (2 if mask else 1)
-            image = x[:, offset:offset + width]
-            coverage = (image[:, count:].mean((1, 2, 3))[:, None] if mask else
-                        x.new_ones((len(x), 1)))
-            features.append(self.encoders[name](image) * (coverage > 0).to(x.dtype))
-            coverages.append(coverage)
-            offset += width
+        for name, count, has_mask in self.modality_layout:
+            images = x[:, offset:offset + count]
+            offset += count
+            if has_mask:
+                masks = x[:, offset:offset + count].clamp(0, 1)
+                offset += count
+                # Un canal de masque par bande, même pour LEGACY RGB.
+                coverage = masks.mean(dim=(1, 2, 3), keepdim=False).unsqueeze(1)
+                # Les pixels non observés n'apportent pas de signal image.
+                images = images * masks
+                encoder_input = (torch.cat([images, masks], dim=1)
+                                 if self.use_mask else images)
+            else:
+                coverage = x.new_ones((x.shape[0], 1))
+                encoder_input = images
+            encoded = self.encoders[name](encoder_input)
+            # Évite que le biais des CNN produise un signal sur une modalité absente.
+            encoded = encoded * (coverage > 0).to(encoded.dtype)
+            features.append(encoded)
+            if self.use_coverage:
+                coverages.append(coverage)
         return self.classifier(torch.cat(features + coverages, dim=1))
 
 

@@ -246,7 +246,7 @@ def discover(roots):
             issues.append({'path': str(path), 'error': str(exc)})
     rows = []
     for run in runs.values():
-        row = dict(run_id=run.id, name=run.path.name, status=run.status,
+        row = dict(run_id=run.id, name=run.path.name, status=run.status, radio_source=run.config.get("radio_source", "RAW"),
                    model=run.config.get('model'), mode=run.config.get('mode'),
                    seed=run.config.get('seed'), date=run.metadata.get('created_at'),
                    parameters=run.metadata.get('parameters'),
@@ -314,6 +314,7 @@ def comparison(runs, split='validation', cohort='all', common=False):
         # Provenance inconnue : groupe propre au run, jamais une égalité implicite.
         group = cid or f'unverified:{run.id}'
         rows.append(dict(run_id=run.id, name=run.path.name, model=run.config.get('model'),
+                         radio_source=run.config.get('radio_source', 'RAW'),
                          mode=run.config.get('mode'), seed=run.config.get('seed'),
                          cohort_id=group, provenance_verified=cid is not None,
                          **scores(frame, run.classes)))
@@ -530,6 +531,7 @@ def protocol_summary(table, runs, metric='macro_f1'):
     for pid, group in annotated.groupby('protocol_id'):
         per_cohort = group.groupby('cohort_id')[METRICS].mean()
         row = dict(protocol_id=pid, model=group.model.iloc[0], mode=group['mode'].iloc[0],
+                   radio_source=lookup[group.run_id.iloc[0]].config.get('radio_source', 'RAW'),
                    n_runs=len(group), n_cohorts=len(per_cohort),
                    cohort_set=fingerprint(sorted(group.cohort_id.unique())),
                    seeds=sorted({str(lookup[r].config.get('seed')) for r in group.run_id}))
@@ -562,7 +564,7 @@ def plot_binary_galleries(run, *, processed_root, split="test", cohort="all",
         selected = frame[(frame.label.eq(positive) == truth) & (frame.prediction.eq(positive) == prediction)]
         entries = selected.to_dict("records")
         for entry in entries:
-            entry.update(positive_class=classes[positive], probability=entry[f"probability_{classes[positive]}"])
+            entry.update(radio_source=run.config.get("radio_source", "RAW"), size=run.config.get("size", 128), positive_class=classes[positive], probability=entry[f"probability_{classes[positive]}"])
         figures[status] = plot_classification_gallery(
             entries, title=f"{run.config.get('task', 'de_nde')} — {classes[positive]} — {status}",
             processed_root=processed_root, radio_template=radio_template,

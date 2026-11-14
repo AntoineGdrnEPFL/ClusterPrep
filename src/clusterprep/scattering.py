@@ -3,6 +3,7 @@
 import json
 import hashlib
 from .processed import CACHE_VERSION
+from .io import resolve_radio_path, validate_radio_source
 import os
 import tempfile
 from pathlib import Path
@@ -22,7 +23,7 @@ def _source_signature(info, mode):
     result = {}
 
     for name in (("raw_path",) if mode == "raw" else ("raw_path", "chandra_path")):
-        path = info.get(name)
+        path = resolve_radio_path(info) if name == "raw_path" else info.get(name)
 
         if path is None:
             result[name] = None
@@ -53,6 +54,7 @@ def scattering_identity(
     zoom_key = zoom_identity(zoom)
     return {
         "version": SCATTERING_CACHE_VERSION,
+        **({"radio_source": info["radio_source"]} if info.get("radio_source", "RAW") != "RAW" else {}),
         "preprocessing_version": CACHE_VERSION,
         "cluster_id": info["cluster_id"],
         "mode": mode,
@@ -89,7 +91,8 @@ def scattering_paths(
     cluster = quote(str(info["cluster_id"]), safe="+")
     if cluster in {"", ".", ".."}:
         raise ValueError("cluster_id invalide")
-    root = Path(scattering_dir) / cluster
+    source = validate_radio_source(info.get("radio_source", "RAW"))
+    root = Path(scattering_dir) / cluster if source == "RAW" else Path(scattering_dir) / source / cluster
 
     stem = (
         f"{cluster}_scattering_"

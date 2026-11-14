@@ -5,7 +5,7 @@ from dataclasses import replace
 import json
 import sys
 from pathlib import Path
-from .io import get_data_info_dict, CLASS_NAMES
+from .io import get_data_info_dict, CLASS_NAMES, radio_coverage
 
 
 def preprocessing_main(argv):
@@ -20,6 +20,7 @@ def preprocessing_main(argv):
         "--mode", choices=("raw", "pair", "multimodal"), default="multimodal"
     )
     parser.add_argument("--size", type=int, default=128)
+    parser.add_argument("--radio-source", default="RAW")
     parser.add_argument("--legacy-root", type=Path)
     parser.add_argument("--legacy-only", action="store_true", help="Prepare only optical products")
     parser.add_argument("--legacy-bands", nargs="+", default=["g", "r", "z"])
@@ -31,7 +32,12 @@ def preprocessing_main(argv):
     args = parser.parse_args(argv)
     if args.size < 1:
         parser.error("--size doit être positif")
+    from .io import select_radio_source
     info = get_data_info_dict(args.data_dir, args.class_names)
+    audit = getattr(info, "radio_audit", None) or radio_coverage(info)
+    args.processed_dir.mkdir(parents=True, exist_ok=True)
+    (args.processed_dir / "radio_inventory.json").write_text(json.dumps(audit, indent=2))
+    info = select_radio_source(info, args.radio_source)
     if args.legacy_only:
         if args.legacy_root is None:
             parser.error("--legacy-only requires --legacy-root")
@@ -108,6 +114,7 @@ def main(argv=None):
     if any(c.task in SUBTYPE_TASKS for c in configs) and (classes is None or set(classes) == {"DE", "NDE"}):
         discovery_classes = None
     info = get_data_info_dict(spec["data_dir"], discovery_classes)
+    radio_audit = getattr(info, "radio_audit", None) or radio_coverage(info)
     if args.quiet:
         configs = [replace(c, verbose=False) for c in configs]
     if args.processed_dir is not None:
@@ -115,6 +122,9 @@ def main(argv=None):
     if not configs:
         parser.error("La suite doit contenir au moins une expérience")
     output = Path(spec.get("output_dir", "results/experiments"))
+    import uuid
+    output.mkdir(parents=True, exist_ok=True)
+    (output / f"radio-inventory-{uuid.uuid4().hex[:8]}.json").write_text(json.dumps(radio_audit, indent=2))
     runs = run_experiments(
         info,
         configs,
@@ -122,6 +132,9 @@ def main(argv=None):
         class_names=classes or CLASS_NAMES,
         **spec.get("split", {}),
     )
+    for run in runs:
+        if run.is_dir():
+            (run / "radio_inventory.json").write_text(json.dumps(radio_audit, indent=2))
     # Le fichier de comparaison appartient à cette suite et ne remplace pas une autre.
     table = output / f"comparison-{runs[0].name}.csv"
     default_cohort = "paired" if any(c.mode == "pair" for c in configs) else "all"

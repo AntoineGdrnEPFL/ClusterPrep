@@ -521,6 +521,8 @@ def plot_galleries(
         for row in data.head(max_clusters).to_dict("records"):
             # Existing renderer understands either binary or RR/RH title fields.
             row.update(
+                radio_source=run.config.get("radio_source", "RAW"),
+                size=run.config.get("size", 128),
                 positive_class=row["label"],
                 probability=row["score"],
                 label=int(row["truth"]),

@@ -146,8 +146,8 @@ def prepare_noise_context(images, info=None, cache_dir=None):
     # Older preprocess functions/caches may omit all or part of the header.
     # Recover only from the actual source HDU, retaining the reduced-grid WCS.
     if info is not None and any(k not in metadata for k in metadata_keys):
-        from .io import load_celestial_fits
-        _, header, _ = load_celestial_fits(info['raw_path'])
+        from .io import load_celestial_fits, resolve_radio_path
+        _, header, _ = load_celestial_fits(resolve_radio_path(info))
         metadata = {**{k: header[k] for k in metadata_keys if k in header}, **metadata}
     context = dict(metadata=metadata, rms=estimate_rms(images['raw']),
                    jacobian=local_jacobian(images['wcs'], images['raw'].shape).tolist())

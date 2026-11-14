@@ -380,3 +380,49 @@ def test_binary_diagnostics_single_target_percentages_and_named_export(make_run,
     multi = a.load_run(make_run('multi_diagnostics', task='rr_rh'))
     assert len(a.plot_diagnostics(multi).axes) == 11
     plt.close('all')
+
+
+def test_legacy_validation_flag_groups_comparable_zoom_runs(make_run):
+    from clusterprep.analysis.comparison import protocol_id
+    legacy = a.load_run(make_run('no_zoom', task='rr_rh', fold=0))
+    zoom = a.load_run(make_run('zoom', task='rr_rh', fold=0))
+    zoom.config['augmentation'] = {'zoom': {'enabled': True}}
+    zoom.splits['split_config']['use_val'] = True
+    assert legacy.configuration_id != zoom.configuration_id
+    assert protocol_id(legacy, 'test') == protocol_id(zoom, 'test')
+    assert 'use_val' not in legacy.splits['split_config']
+    a.assert_comparable([legacy, zoom])
+    figure = a.plot_performance(a.metrics_table([legacy, zoom]), kind='boxplot')
+    assert len(figure.axes) == 1
+    assert len(figure.axes[0].get_yticklabels()) == 2
+    plt.close(figure)
+    zoom.splits['split_config']['use_val'] = False
+    assert protocol_id(legacy, 'test') != protocol_id(zoom, 'test')
+    for run in (legacy, zoom):
+        run.splits['train'] += run.splits['validation']
+        run.splits['validation'] = []
+    assert protocol_id(legacy, 'test') == protocol_id(zoom, 'test')
+
+
+def test_ignore_code_version_is_opt_in_and_preserves_other_guards(make_run):
+    runs = [a.load_run(make_run(f'code-{i}', fold=i)) for i in range(3)]
+    for i, run in enumerate(runs):
+        run.metadata['library_source_sha256'] = f'source-{i}'
+    original = [run.configuration_id for run in runs]
+    provenance = json.dumps([run.metadata for run in runs], sort_keys=True)
+    assert len(set(original)) == 3
+    for run in runs:
+        run.analysis_ignore_code_version = True
+    assert len({run.configuration_id for run in runs}) == 1
+    assert a.aggregate_metrics(a.metrics_table(runs)).iloc[0].n_folds == 3
+    assert [run.original_configuration_id for run in runs] == original
+    assert json.dumps([run.metadata for run in runs], sort_keys=True) == provenance
+    registry = a.registry_table(runs)
+    assert registry.original_configuration_id.tolist() == original
+    assert registry.library_source_sha256.nunique() == 3
+    runs[1].config['learning_rate'] = .02
+    assert runs[1].configuration_id != runs[0].configuration_id
+    runs[2].splits['split_config']['split_seed'] = 123
+    assert len(a.aggregate_metrics(a.metrics_table(runs))) == 3
+    runs[0].analysis_ignore_code_version = False
+    assert runs[0].configuration_id == original[0]

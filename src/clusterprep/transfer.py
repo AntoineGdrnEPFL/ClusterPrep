@@ -243,6 +243,7 @@ def prepare_transfer_source(target_model, config, factory):
     return {
         "source_experiment": str(source_dir), "checkpoint_path": str(checkpoint_path),
         "checkpoint_sha256": digest.hexdigest(),
+        "source_radio_source": source_config.radio_source, "target_radio_source": config.radio_source,
         "source_architecture": source_config.model, "target_architecture": config.model,
         "source_config": raw, "module_prefixes": transfer.module_prefixes,
         "loaded_modules": report, "compatibility_warnings": warnings,

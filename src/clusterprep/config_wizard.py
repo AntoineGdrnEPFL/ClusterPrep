@@ -127,6 +127,8 @@ def create_config(output_path=None, *, input_fn=None, print_fn=None):
         available = list_models()
         defaults = ExperimentConfig(name="experience_1")
         labels = {
+            "radio_source": "Produit radio (RAW, T25kpc, T50kpc, …)",
+            "missing_radio_policy": "Produit radio manquant (error)",
             "task": "Tâche (de_nde, rr_rh, rr_binary, rh_binary)",
             "thresholds": "Seuils RR/RH (objet JSON)",
             "threshold_selection": "Sélection des seuils (fixed, f1, recall_at_precision)",

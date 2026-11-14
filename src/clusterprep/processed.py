@@ -9,6 +9,7 @@ import warnings
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS, FITSFixedWarning
+from .io import resolve_radio_path, validate_radio_source
 from .preprocessing import preprocess
 from .progress import progress, message
 
@@ -20,16 +21,22 @@ def _identity(info, mode, size):
     for name in (("raw_path",) if mode == "raw" else ("raw_path", "chandra_path")):
         if not info.get(name):
             raise ValueError(f"Fichier manquant : {name}")
-        path = Path(info[name]).resolve()
+        path = Path(resolve_radio_path(info) if name == "raw_path" else info[name]).resolve()
         stat = path.stat()
         sources[name] = [str(path), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
-    return {"version": CACHE_VERSION, "mode": mode, "size": size, "sources": sources}
+    identity = {"version": CACHE_VERSION, "mode": mode, "size": size, "sources": sources}
+    if info.get("radio_source", "RAW") != "RAW":
+        identity.update(radio_source=info["radio_source"], radio_preprocessing_version=1)
+    return identity
 
 
 def processed_paths(info, mode="raw", size=128, processed_dir="processed"):
     """Chemins des images séparées, distingués par taille et version."""
     if mode not in {"raw", "pair"} or not isinstance(size, int) or size < 1:
         raise ValueError("mode raw/pair et size entier positif attendus")
+    source = validate_radio_source(info.get("radio_source", "RAW"))
+    if source != "RAW":
+        processed_dir = Path(processed_dir) / source
     cluster = quote(str(info["cluster_id"]), safe="+")
     if cluster in {"", ".", ".."}:
         raise ValueError("cluster_id invalide")
@@ -96,6 +103,8 @@ def load_processed(info, mode="raw", size=128, processed_dir="processed", *,
     identities = {name: _identity(info, "raw" if name == "raw" else "pair", size)
                   for name in paths}
     legacy_dir = Path(processed_dir) / quote(str(info["cluster_id"]), safe="")
+    if info.get("radio_source", "RAW") != "RAW":
+        legacy_dir = paths["raw"].parent
     parent = paths["raw"].parent
     if legacy_dir != parent and legacy_dir.is_dir() and not parent.exists():
         try:

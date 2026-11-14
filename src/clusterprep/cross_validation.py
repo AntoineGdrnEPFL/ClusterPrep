@@ -364,6 +364,8 @@ def _plot_curves(path, trials, phased):
 def run_cross_validation(info, config, output_dir, *, splits, class_names,
                          model_factory=None, input_adapter=None, split_metadata=None):
     from .training import run_experiment, _training_phases, _validate_splits, _source_signature
+    from .io import select_radio_source
+    info = select_radio_source(info, config.radio_source, config.missing_radio_policy)
     cv = config.cross_validation
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')
     root = Path(output_dir) / f'{config.name}-cv-{stamp}-{uuid.uuid4().hex[:8]}'

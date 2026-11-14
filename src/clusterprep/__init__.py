@@ -1,5 +1,6 @@
 """Préparation radio/Chandra pour l'entraînement de modèles."""
-from .io import CLASS_NAMES, get_data_info_dict, get_pairs, load_celestial_fits
+from .io import (CLASS_NAMES, get_data_info_dict, get_pairs, load_celestial_fits,
+                 resolve_radio_path, select_radio_source, radio_coverage)
 from .preprocessing import block_average, centered_raw_window, normalize, preprocess
 from .dataset import ClusterDataset
 from .splits import split_data_keys
@@ -10,7 +11,7 @@ from .metrics import classification_metrics, multilabel_metrics
 from .training import (ExperimentConfig, EarlyStopping, run_experiment,
                        run_experiments, compare_experiments)
 
-__all__ = ["CLASS_NAMES", "get_data_info_dict", "get_pairs", "load_celestial_fits",
+__all__ = ["resolve_radio_path", "select_radio_source", "radio_coverage", "CLASS_NAMES", "get_data_info_dict", "get_pairs", "load_celestial_fits",
            "block_average", "centered_raw_window", "normalize", "preprocess",
            "ClusterDataset", "split_data_keys", "plot_sample", "plot_comparison",
            "SimpleCNN", "FusionCNN", "build_model", "classification_metrics",

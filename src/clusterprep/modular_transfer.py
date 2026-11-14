@@ -260,6 +260,7 @@ def _load_source(spec, factory, checkpoint_cache):
         "checkpoint": str(path), "sha256": digest.hexdigest(), "config": raw,
         "metadata_origin": metadata_origin, "metadata_migrations": migrations,
         "task": source_config.task,
+        "radio_source": source_config.radio_source,
         "class_names": list(names), "legacy_key_mapping": migrated,
         "preprocessing": metadata.get("preprocessing", {
             "size": source_config.size, "mode": source_config.mode,

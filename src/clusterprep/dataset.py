@@ -3,6 +3,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from .io import resolve_radio_path
 from .preprocessing import preprocess, normalize
 from .processed import load_processed
 from .scattering import load_scattering
@@ -42,10 +43,14 @@ class ClusterDataset(Dataset):
         include_masks=True,
         normalization=None,
         normalization_bounds=None,
+        radio_source=None,
+        missing_radio_policy="error",
     ):
 
         from .modalities import validate_modalities, PATHS
-        from .io import discover_legacy
+        from .io import discover_legacy, select_radio_source
+        if radio_source is not None:
+            data_info = select_radio_source(data_info, radio_source, missing_radio_policy)
         validate_modalities(modalities, missing_modality_policy, legacy, include_masks)
         self.modalities = modalities
         self.legacy = legacy or {}
@@ -261,6 +266,8 @@ class ClusterDataset(Dataset):
             "task": self.task,
             "target": self._make_target(info).tolist(),
             "raw_path": info["raw_path"],
+            "radio_source": info.get("radio_source", "RAW"),
+            "active_radio_path": resolve_radio_path(info),
             "chandra_path": info.get("chandra_path"),
             "scattering_path": info.get("scattering_path"),
             "legacy_path": info.get("legacy_path"),

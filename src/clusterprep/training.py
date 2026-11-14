@@ -95,9 +95,15 @@ class ExperimentConfig(TrainingConfig):
     include_masks: bool = True
     normalization: dict = field(default_factory=dict)
     normalization_bounds: dict = field(default_factory=dict)
+    radio_source: str = "RAW"
+    missing_radio_policy: str = "error"
 
     def __post_init__(self):
         super().__post_init__()
+        from .io import validate_radio_source
+        validate_radio_source(self.radio_source)
+        if self.missing_radio_policy != "error":
+            raise ValueError("missing_radio_policy: seule 'error' est supportée")
         from .modalities import validate_modalities
         validate_modalities(self.modalities, self.missing_modality_policy, self.legacy, self.include_masks)
         from .radio_noise import validate_radio_noise
@@ -1081,7 +1087,10 @@ def run_experiment(
     """
     if not isinstance(use_val, bool):
         raise ValueError("use_val doit être booléen")
-    data_info = merge_cluster_labels(data_info)
+    from .io import select_radio_source
+    data_info = select_radio_source(merge_cluster_labels(data_info), config.radio_source,
+                                    config.missing_radio_policy)
+    message(f"Produit radio : {config.radio_source}", config.verbose)
     if config.modalities is not None:
         from .io import discover_legacy
         data_info = discover_legacy(data_info, config.legacy.get("raw_root"),
@@ -1239,6 +1248,9 @@ def _run(
     transfer_splits_report=None,
     cv_execution=None,
 ):
+    from .io import radio_coverage
+    _json(run_dir / "radio_coverage.json", {"radio_source": config.radio_source,
+                                           "products": radio_coverage(info), "excluded": []})
     started = time.perf_counter()
     random.seed(config.seed)
     np.random.seed(config.seed)
@@ -1257,6 +1269,7 @@ def _run(
         bounds = fit_normalization(fitting)
         config = replace(config, normalization_bounds=bounds)
         _json(run_dir / "normalization.json", {"train_keys": list(splits[0]), "bounds": bounds,
+                                              "radio_source": config.radio_source,
                                               "normalization": config.normalization,
                                               "legacy": config.legacy.get("normalization", {})})
         _json(run_dir / "modality_exclusions.json", {
@@ -1271,6 +1284,7 @@ def _run(
     if isinstance(config.transfer, ModularTransferConfig) and config.transfer.enabled:
         try:
             transfer_report = initialize_transfer(model, config.transfer, factory)
+            transfer_report["target_radio_source"] = config.radio_source
         except TransferError as error:
             _json(run_dir / "transfer.json", error.report)
             raise
@@ -1487,6 +1501,10 @@ def _run(
     }
     sources = {k: _source_signature(info[k]) for keys in base_splits for k in keys}
     split_manifest["source_signatures"] = sources
+    from .processed import _identity
+    split_manifest["radio_source"] = config.radio_source
+    split_manifest["active_radio_signatures"] = {
+        k: _identity(info[k], "raw", config.size) for keys in base_splits for k in keys}
     if config.modalities is not None:
         split_manifest["optical_source_signatures"] = {
             k: ({"path": str(Path(info[k]["legacy_path"]).resolve()),
@@ -1844,6 +1862,7 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
             "run_id": result["run_id"],
             "name": result["config"]["name"],
             "mode": result["config"]["mode"],
+            "radio_source": result["config"].get("radio_source", "RAW"),
             "model": result["config"]["model"],
             "modalities": "+".join(result["config"].get("modalities") or []),
             "seed": result["config"]["seed"],

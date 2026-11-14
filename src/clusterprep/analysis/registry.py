@@ -52,6 +52,7 @@ class TrainingRun:
     cv_plan: dict = field(default_factory=dict)
     phase_report: dict = field(default_factory=dict)
     fold: int | None = None
+    analysis_ignore_code_version: bool = False
 
     @property
     def run_id(self):
@@ -113,6 +114,14 @@ class TrainingRun:
             if not isinstance(override, str) or not re.fullmatch(r'[0-9a-f]{20}', override):
                 raise ValueError('analysis_configuration_id must be a 20-character hexadecimal identifier')
             return override
+        return self._configuration_fingerprint(ignore_code_version=self.analysis_ignore_code_version)
+
+    @property
+    def original_configuration_id(self):
+        """Strict identity computed from the saved training provenance."""
+        return self._configuration_fingerprint(ignore_code_version=False)
+
+    def _configuration_fingerprint(self, *, ignore_code_version):
         # Seed stays in the configuration: folds of a seeded protocol may aggregate,
         # independent seeds must not silently count as extra folds.
         # Bounds are fitted on each fold's training samples, not hyperparameters.
@@ -122,7 +131,7 @@ class TrainingRun:
         config = {k: v for k, v in self.config.items() if k not in ignored}
         split = {k: v for k, v in self.splits.get('split_config', {}).items() if k != 'fold_index'}
         return fingerprint([config, split, self.stage, self.metadata.get('normalization'),
-                            self.metadata.get('library_source_sha256')])
+                            None if ignore_code_version else self.metadata.get('library_source_sha256')])
 
     @property
     def noise_method(self):
@@ -137,9 +146,14 @@ class TrainingRun:
 
     def summary(self):
         return dict(run_name=self.run_name, run_id=self.run_id, configuration_name=self.configuration_name, path=str(self.path), experiment_id=self.experiment_id,
-                    configuration_id=self.configuration_id, model=self.config.get('model'),
+                    configuration_id=self.configuration_id,
+                    original_configuration_id=self.original_configuration_id,
+                    analysis_ignore_code_version=self.analysis_ignore_code_version,
+                    library_source_sha256=self.metadata.get('library_source_sha256'),
+                    model=self.config.get('model'),
                     architecture=self.metadata.get('model_class', self.config.get('model')),
                     modalities=self.config.get('mode'), task_type=self.task_type,
+                    radio_source=self.config.get('radio_source', 'RAW'),
                     task=self.config.get('task'), noise_method=self.noise_method, labels=json.dumps(self.labels), fold=self.fold,
                     expected_folds=len(self.cv_plan.get('folds', [])) or self.splits.get('split_config', {}).get('n_folds'),
                     seed=self.config.get('seed'), stage=self.stage, status=self.status,

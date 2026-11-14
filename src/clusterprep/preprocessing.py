@@ -1,7 +1,7 @@
 """Préparation alignée sur la grille radio, sans dépendance à dcreclass."""
 import numpy as np
 from reproject import reproject_interp
-from .io import read_fits_with_wcs, load_celestial_fits
+from .io import read_fits_with_wcs, load_celestial_fits, resolve_radio_path
 
 def block_average(image, factor):
     """Moyenne des valeurs finies dans des blocs factor × factor.
@@ -47,11 +47,11 @@ def preprocess(info, mode, size=128):
     if not isinstance(size, int) or size < 1:
         raise ValueError("size doit être positif")
 
-    raw, raw_header, raw_wcs = load_celestial_fits(info["raw_path"])
+    raw, raw_header, raw_wcs = load_celestial_fits(resolve_radio_path(info))
     raw = raw.astype(np.float32)
     ratio = min(raw.shape) // size
     if ratio < 1:
-        raise ValueError(f"RAW trop petit : {info['cluster_id']}")
+        raise ValueError(f"Carte radio sélectionnée trop petite (aucun padding implicite) : {info['cluster_id']}")
     factor = 1 << (ratio.bit_length() - 1)
     window = centered_raw_window(raw.shape, size, factor)
     raw_window = raw[window]
@@ -110,7 +110,7 @@ def normalize(image, mask=None, percentile_lo=30, percentile_hi=99, alpha=10.0, 
 def preprocess_optical(info, size=128, bands=None, hdu=None):
     """Project all selected bands onto the exact pre-downsampling radio window."""
     from .io import load_optical_fits
-    raw, _, radio_wcs = load_celestial_fits(info["raw_path"])
+    raw, _, radio_wcs = load_celestial_fits(resolve_radio_path(info))
     ratio = min(raw.shape) // size
     if ratio < 1:
         raise ValueError("RAW too small for optical reference grid")
