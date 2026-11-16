@@ -71,6 +71,10 @@ def preprocessing_main(argv):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "evaluate":
+        from .matched_evaluation import main as evaluate_main
+        evaluate_main(argv[1:])
+        return
     if argv and argv[0] == "createconfig":
         from .config_wizard import create_config
 
@@ -98,6 +102,7 @@ def main(argv=None):
     parser.add_argument(
         "--processed-dir", type=Path, help="Dossier commun des FITS prétraités"
     )
+    parser.add_argument("--dry-run", action="store_true", help="Valider la configuration sans entraîner")
     args = parser.parse_args(argv)
     if args.list_models:
         print(json.dumps(list_models(), indent=2))
@@ -105,8 +110,16 @@ def main(argv=None):
     if args.config is None:
         parser.error("Un fichier de configuration est requis")
     spec = json.loads(args.config.read_text())
+    if "matched_cohort" in spec:
+        from .matched_runner import run_config_suite
+        run_config_suite(spec, args.config, dry_run=args.dry_run,
+                         quiet=args.quiet, processed_dir=args.processed_dir)
+        return
     classes = spec.get("class_names")
     configs = [ExperimentConfig(**item) for item in spec["experiments"]]
+    if args.dry_run:
+        print(f"{len(configs)} configurations valides ; aucun entraînement lancé.")
+        return
     # Historical binary JSONs commonly restrict discovery to DE/NDE folders.
     # Subtype tasks need the original annotations, including candidate folders.
     from .labels import SUBTYPE_TASKS

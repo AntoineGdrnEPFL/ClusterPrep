@@ -97,9 +97,23 @@ class ExperimentConfig(TrainingConfig):
     normalization_bounds: dict = field(default_factory=dict)
     radio_source: str = "RAW"
     missing_radio_policy: str = "error"
+    radio_preprocessing: str = "historical"
+    matched_resolution: dict | None = None
+    matched_records: dict | None = None
+    matched_cache_dir: str | None = None
+    evaluate_test: bool = True
 
     def __post_init__(self):
         super().__post_init__()
+        if not isinstance(self.evaluate_test, bool):
+            raise ValueError("evaluate_test must be boolean")
+        if self.radio_preprocessing not in {"historical", "matched_resolution"}:
+            raise ValueError("Unknown radio_preprocessing")
+        if self.radio_preprocessing == "matched_resolution":
+            from .matched_dataset import MatchedResolutionConfig
+            MatchedResolutionConfig.parse(self.matched_resolution)
+            if self.modalities != ["radio", "xray"]:
+                raise ValueError("Matched training requires explicit radio/xray modalities")
         from .io import validate_radio_source
         validate_radio_source(self.radio_source)
         if self.missing_radio_policy != "error":
@@ -293,7 +307,8 @@ def compute_task_counts(
     targets = [task_target(data_info[k], task, candidate_policy)[0] for k in train_keys]
     if task in BINARY_TASKS:
         return [sum(t == i for t in targets) for i in range(2)]
-    return np.asarray(targets).sum(axis=0).tolist()
+    masks = [task_target(data_info[k], task, candidate_policy)[1] for k in train_keys]
+    return (np.asarray(targets) * np.asarray(masks)).sum(axis=0).tolist()
 
 
 def _epoch(
@@ -1119,7 +1134,7 @@ def run_experiment(
     if splits is None:
         splits = split_data_keys(
             data_info,
-            mode=(config.mode if config.task == "rr_rh" and config.modalities is None else "raw"),
+            mode=(config.mode if config.task == "rr_rh" else "raw"),
             task=config.task,
             candidate_policy=config.candidate_policy,
             seed=config.seed,
@@ -1172,10 +1187,11 @@ def run_experiment(
                                   "independent_evaluation": all(a["independent_evaluation"] for a in audits.values())}
     base_splits = splits
     if config.modalities is not None and config.missing_modality_policy == "required":
-        from .modalities import PATHS
-        splits = tuple([k for k in keys if all(data_info[k].get(PATHS[m]) for m in config.modalities)]
+        from .modalities import PATHS, required_modalities
+        required = required_modalities(config.modalities, config.mode)
+        splits = tuple([k for k in keys if all(data_info[k].get(PATHS[m]) for m in required)]
                        for keys in splits)
-    if config.modalities is None and config.mode == "pair":
+    if config.mode == "pair":
         splits = tuple(
             [k for k in keys if data_info[k].get("chandra_path")] for keys in splits
         )
@@ -1248,6 +1264,17 @@ def _run(
     transfer_splits_report=None,
     cv_execution=None,
 ):
+    # Exclude reserved test observations from every data preparation operation.
+    reserved_test = list(splits[2]) if not config.evaluate_test else []
+    if not config.evaluate_test:
+        splits = (splits[0], splits[1], [])
+        base_splits = (base_splits[0], base_splits[1], [])
+        active = set(splits[0] + splits[1])
+        info = {k: v for k, v in info.items() if k in active}
+    dataset_options = dict(radio_preprocessing=config.radio_preprocessing,
+                           matched_resolution=config.matched_resolution,
+                           matched_records=config.matched_records,
+                           matched_cache_dir=config.matched_cache_dir)
     from .io import radio_coverage
     _json(run_dir / "radio_coverage.json", {"radio_source": config.radio_source,
                                            "products": radio_coverage(info), "excluded": []})
@@ -1264,7 +1291,7 @@ def _run(
                                  processed_dir=config.processed_dir, modalities=config.modalities,
                                  legacy=config.legacy, include_masks=config.include_masks,
                                  normalization=config.normalization,
-                                 missing_modality_policy=config.missing_modality_policy)
+                                 missing_modality_policy=config.missing_modality_policy, **dataset_options)
         # Refit per fold; never reuse another fold's bounds during training.
         bounds = fit_normalization(fitting)
         config = replace(config, normalization_bounds=bounds)
@@ -1394,6 +1421,7 @@ def _run(
             scattering_params=scattering_params,
             task=config.task,
             candidate_policy=config.candidate_policy,
+            **dataset_options,
         )
         for i, keys in enumerate(splits)
     ]
@@ -1480,6 +1508,9 @@ def _run(
     split_manifest = {
         name: keys for name, keys in zip(("train", "validation", "test"), splits)
     }
+    if not config.evaluate_test:
+        split_manifest["reserved_external_test"] = reserved_test
+        split_manifest["test_evaluated"] = False
     if split_metadata is not None:
         split_manifest["split_config"] = split_metadata
     split_manifest["base_splits"] = dict(
@@ -1624,6 +1655,23 @@ def _run(
         checkpoint = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
         trainer.model.load_state_dict(checkpoint["model_state_dict"])
         del checkpoint
+    if not config.evaluate_test:
+        _write_predictions(run_dir / "validation_predictions.csv", val_predictions,
+                           output_names, task=config.task)
+        _json(run_dir / "validation_predictions.json", val_predictions)
+        _json(run_dir / "validation_metrics.json", val_metrics)
+        _json(run_dir / "metrics.json", dict(
+            schema_version=2, run_id=run_dir.name, config=asdict(config),
+            class_names=list(class_names), best_epoch=best_epoch,
+            epochs_ran=len(history), stopped_early=stopped,
+            seconds=time.perf_counter()-started, validation=val_metrics,
+            test=None, test_cohorts={}, test_evaluated=False,
+            threshold_selection=threshold_selection,
+            annotation_convention="rr_rh_known_mask_when_present",
+            split_counts=dict(train=len(splits[0]), validation=len(splits[1]),
+                              test=0, reserved_test=len(reserved_test))))
+        _json(run_dir / "status.json", {"status": "completed", "test_evaluated": False})
+        return run_dir
     test_metrics, test_predictions = trainer.evaluate(
         loaders[2], description="Test final"
     )
@@ -1777,7 +1825,7 @@ def run_experiments(
             )
             continue
         split_mode = (
-            "pair" if config.task == "rr_rh" and config.mode == "pair" and config.modalities is None else "raw"
+            "pair" if config.task == "rr_rh" and config.mode == "pair" else "raw"
         )
         split_key = (config.task, config.candidate_policy, split_mode)
         if supplied_splits is None and split_key not in split_cache:

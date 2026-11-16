@@ -184,10 +184,20 @@ def _map_tensors(value, function):
 
 
 def move_batch_to_device(batch, device):
-    non_blocking = torch.device(device).type == "cuda"
-    return _map_tensors(
-        batch, lambda tensor: tensor.to(device, non_blocking=non_blocking)
-    )
+    """Move model inputs without sending physical provenance to the accelerator.
+
+    Default collation turns Python float metadata into float64 tensors. Keep
+    resolution metadata on CPU at its original precision; MPS model tensors
+    require float32 instead of float64. Integer labels and masks retain dtype.
+    """
+    target = torch.device(device)
+    def move(tensor):
+        dtype = torch.float32 if target.type == 'mps' and tensor.dtype == torch.float64 else tensor.dtype
+        return tensor.to(target, dtype=dtype, non_blocking=target.type == 'cuda')
+    if isinstance(batch, dict):
+        return {key: value if key == 'resolution_metadata' else _map_tensors(value, move)
+                for key, value in batch.items()}
+    return _map_tensors(batch, move)
 
 
 def compile_training_model(model, config, device):

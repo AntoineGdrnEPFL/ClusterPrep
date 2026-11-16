@@ -40,6 +40,13 @@ def task_target(info, task, candidate_policy="positive", class_names=("DE", "NDE
                        for name in ("RR", "RH")], dtype=np.float32)
     mask = np.array([not (candidate_policy == "ignore" and "c" + name in labels and name not in labels)
                      for name in ("RR", "RH")], dtype=np.float32)
+    # Opt-in annotation completeness for a curated cohort. Historical samples
+    # retain their existing targets/masks; this can only remove supervision.
+    if "rr_rh_known_mask" in info:
+        known = np.asarray(info["rr_rh_known_mask"])
+        if known.shape != (2,) or not np.isin(known, [0, 1]).all():
+            raise ValueError("rr_rh_known_mask must contain two binary values")
+        mask *= known.astype(np.float32)
     return target, mask
 
 

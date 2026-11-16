@@ -89,3 +89,13 @@ def fit_normalization(dataset):
             bounds[modality].append(np.percentile(pixels, [options.get("lower_percentile", 30),
                                                           options.get("upper_percentile", 99)]).tolist())
     return bounds
+
+
+def mode_keys(info, keys, mode):
+    """CHANDRA eligibility depends on mode, never on spatial preprocessing."""
+    return [k for k in keys if mode != 'pair' or info[k].get('chandra_path')]
+
+
+def required_modalities(modalities, mode):
+    # Multimodal X-ray is always optional, even with a legacy required policy.
+    return [m for m in (modalities or []) if not (mode == 'multimodal' and m == 'xray')]

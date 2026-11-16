@@ -45,13 +45,28 @@ class ClusterDataset(Dataset):
         normalization_bounds=None,
         radio_source=None,
         missing_radio_policy="error",
+        radio_preprocessing="historical",
+        matched_resolution=None,
+        matched_records=None,
+        matched_cache_dir=None,
     ):
 
-        from .modalities import validate_modalities, PATHS
+        if radio_preprocessing not in {"historical", "matched_resolution"}:
+            raise ValueError("radio_preprocessing: historical or matched_resolution")
+        if radio_preprocessing == "historical" and any(
+            value is not None for value in (matched_resolution, matched_records, matched_cache_dir)
+        ):
+            raise ValueError("Matched options require radio_preprocessing='matched_resolution'")
+        self.radio_preprocessing = radio_preprocessing
+        self._matched = None
+        if radio_preprocessing == "matched_resolution":
+            keys = list(keys)  # Required-modality checks must not consume generators.
+        from .modalities import validate_modalities, PATHS, mode_keys, required_modalities
         from .io import discover_legacy, select_radio_source
         if radio_source is not None:
             data_info = select_radio_source(data_info, radio_source, missing_radio_policy)
         validate_modalities(modalities, missing_modality_policy, legacy, include_masks)
+        keys = mode_keys(data_info, keys, mode)
         self.modalities = modalities
         self.legacy = legacy or {}
         self.include_masks = include_masks
@@ -63,7 +78,8 @@ class ClusterDataset(Dataset):
             data_info = discover_legacy(data_info, self.legacy.get("raw_root"),
                                        self.legacy.get("filename_pattern", "{cluster_id}_legacy.fits"))
             if missing_modality_policy == "required":
-                keys = [k for k in keys if all(data_info[k].get(PATHS[m]) for m in modalities)]
+                required = required_modalities(modalities, mode)
+                keys = [k for k in keys if all(data_info[k].get(PATHS[m]) for m in required)]
             if augment and not training:
                 raise ValueError("Explicit modality augmentation is restricted to training")
         if mode not in {"raw", "pair", "multimodal"}:
@@ -128,6 +144,12 @@ class ClusterDataset(Dataset):
             if modalities is None and mode == "pair" and not info.get("chandra_path"):
                 raise ValueError(f"Fichier CHANDRA manquant : {key}")
 
+        if radio_preprocessing == "matched_resolution":
+            from .matched_dataset import MatchedDatasetAdapter
+            self._matched = MatchedDatasetAdapter(
+                self, matched_resolution, matched_records,
+                processed_dir if matched_cache_dir is None else matched_cache_dir)
+
     def __len__(self):
         return len(self.keys) * (self.N_VARIANTS if self.augment else 1)
 
@@ -143,6 +165,8 @@ class ClusterDataset(Dataset):
     def __getitem__(self, index):
         if self.modalities is not None:
             return self._modality_item(index)
+        if self._matched is not None:
+            return self._matched.item(self, index)
         source_index, variant_index = self._decode_index(index)
         info = self.data_info[self.keys[source_index]]
         use_pair = self.mode != "raw" and bool(info.get("chandra_path"))
@@ -260,7 +284,7 @@ class ClusterDataset(Dataset):
         source_index, variant_index = self._decode_index(index)
         info = self.data_info[self.keys[source_index]]
         angle, flip, scale = decode_variant(variant_index, self.zoom) if self.augment else (0, False, 1.0)
-        return {
+        result = {
             "cluster_id": info["cluster_id"],
             "labels": sorted(labels_for(info)),
             "task": self.task,
@@ -278,9 +302,26 @@ class ClusterDataset(Dataset):
             "source_index": source_index,
             "variant_index": variant_index,
         }
+        if self._matched is not None:
+            result["resolution_metadata"] = self.get_resolution_metadata(index)
+        return result
+
+    def get_resolution_metadata(self, index):
+        """Full paired provenance/eligibility, even for an ineligible example.
+
+        Index is a dataset index (including variants). Coverage is measured on
+        the unaugmented common field. This method never removes a dataset key.
+        """
+        if self._matched is None:
+            raise ValueError("Resolution metadata requires matched_resolution")
+        source_index, _ = self._decode_index(index)
+        info = self.data_info[self.keys[source_index]]
+        return self._matched.load(info, self.size, enforce=False)["resolution_metadata"]
 
 
     def _modality_images(self, info):
+        if self._matched is not None:
+            return self._matched.load(info, self.size)
         from .processed import load_processed_optical
         from .preprocessing import preprocess_optical
         paired = "xray" in self.modalities and bool(info.get("chandra_path"))
@@ -304,6 +345,9 @@ class ClusterDataset(Dataset):
         sample = {"cluster_id": info["cluster_id"], "key": key,
                   "has_chandra": bool(info.get("chandra_path")),
                   "has_legacy": bool(info.get("legacy_path"))}
+        if self._matched is not None:
+            from .matched_dataset import sample_metadata
+            sample["resolution_metadata"] = sample_metadata(images["resolution_metadata"])
         stacked = []
         availability = []
         for modality, count, with_mask in layout(self.modalities, self.legacy, self.include_masks):
