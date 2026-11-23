@@ -211,7 +211,7 @@ class ImageCNN(nn.Module):
 
 @register_model("dual_encoder_cnn")
 class DualEncoderCNN(nn.Module):
-    """Encodeur radio seul en raw, fusion radio/Chandra dans les autres modes."""
+    """Radio seul ou fusion avec Chandra/LEGACY via deux ImageEncoders."""
 
     def __init__(
         self,
@@ -220,34 +220,52 @@ class DualEncoderCNN(nn.Module):
         fusion_hidden_dim=64,
         use_mask=True,
         use_coverage=True,
+        modality_layout=None,
     ):
         super().__init__()
 
         in_channels, H, W = input_shape
-        if in_channels not in (1, 3):
-            raise ValueError(
-                "DualEncoderCNN attend 1 canal (raw) ou 3 canaux (radio/Chandra/masque)"
-            )
-
-        self.use_chandra = in_channels == 3
-        self.use_mask = use_mask
-        self.use_coverage = use_coverage and self.use_chandra
+        if modality_layout is None:
+            if in_channels not in (1, 3):
+                raise ValueError("DualEncoderCNN attend 1 canal radio ou 3 canaux radio/Chandra/masque")
+            modality_layout = [("radio", 1, False)] + ([("xray", 1, True)] if in_channels == 3 else [])
+        if (len(modality_layout) not in (1, 2)
+                or list(modality_layout[0]) != ["radio", 1, False]
+                or (len(modality_layout) == 2 and modality_layout[1][0] not in {"xray", "legacy", "planck"})):
+            raise ValueError("DualEncoderCNN requiert radio puis, éventuellement, xray, legacy ou planck")
+        if sum(c * (2 if m else 1) for _, c, m in modality_layout) != in_channels:
+            raise ValueError("modality_layout incompatible avec input_shape")
+        self.secondary_name = modality_layout[1][0] if len(modality_layout) == 2 else None
+        self.secondary_channels = modality_layout[1][1] if self.secondary_name else 0
+        self.secondary_mask = bool(self.secondary_name and modality_layout[1][2])
+        self.use_chandra = self.secondary_name == "xray"
+        self.use_mask = use_mask and self.secondary_mask
+        self.use_coverage = use_coverage and self.secondary_name is not None
 
         # RAW uniquement
         self.radio_encoder = ImageEncoder(input_shape=(1, H, W))
 
-        # CHANDRA + mask
-        chandra_channels = 2 if use_mask else 1
+        # Secondary encoder: Chandra or all selected optical bands, with masks.
+        chandra_channels = self.secondary_channels * (2 if self.use_mask else 1)
 
         self.chandra_encoder = (
             ImageEncoder(input_shape=(chandra_channels, H, W))
             if self.use_chandra
             else None
         )
+        self.legacy_encoder = (
+            ImageEncoder(input_shape=(chandra_channels, H, W))
+            if self.secondary_name == "legacy" else None
+        )
 
+        self.planck_encoder = (
+            ImageEncoder(input_shape=(chandra_channels, H, W))
+            if self.secondary_name == "planck" else None
+        )
         fusion_dim = self.radio_encoder.output_dim
-        if self.use_chandra:
-            fusion_dim += self.chandra_encoder.output_dim
+        if self.secondary_name:
+            encoder = self.chandra_encoder if self.use_chandra else (self.planck_encoder if self.secondary_name == "planck" else self.legacy_encoder)
+            fusion_dim += encoder.output_dim
 
         if self.use_coverage:
             fusion_dim += 1
@@ -268,25 +286,28 @@ class DualEncoderCNN(nn.Module):
                 if self.chandra_encoder is not None
                 else {}
             ),
+            **({"legacy": self.legacy_encoder} if self.legacy_encoder is not None else {}),
+            **({"planck": self.planck_encoder} if self.planck_encoder is not None else {}),
             "head": self.classifier,
         }
 
     def forward(self, x):
 
-        # x : [B, 1, H, W] en raw, sinon [B, 3, H, W]
+        # Radio first, then secondary image planes and their coverage masks.
         radio = x[:, 0:1]
-        chandra = x[:, 1:2]
-        mask = x[:, 2:3]
+        end = 1 + self.secondary_channels
+        chandra = x[:, 1:end]
+        mask = x[:, end:end + self.secondary_channels] if self.secondary_mask else None
 
         # -------------------------
         # Radio encoder
         # -------------------------
         radio_features = self.radio_encoder(radio)
-        if not self.use_chandra:
+        if self.secondary_name is None:
             return self.classifier(radio_features)
 
         # -------------------------
-        # Chandra encoder
+        # Secondary encoder (Chandra or LEGACY)
         # -------------------------
         if self.use_mask:
             chandra_input = torch.cat(
@@ -296,13 +317,13 @@ class DualEncoderCNN(nn.Module):
         else:
             chandra_input = chandra
 
-        chandra_features = self.chandra_encoder(chandra_input)
+        encoder = self.chandra_encoder if self.use_chandra else (self.planck_encoder if self.secondary_name == "planck" else self.legacy_encoder)
+        chandra_features = encoder(chandra_input)
 
-        # Fraction de l'image couverte par Chandra
-        coverage = mask.mean(dim=(2, 3))
+        # Mean coverage over secondary bands.
+        coverage = mask.mean(dim=(1, 2, 3))[:, None] if mask is not None else x.new_ones((len(x), 1))
 
-        # Si aucune donnée Chandra :
-        # pas de contribution du X-ray
+        # Missing secondary modality contributes no features.
         has_chandra = (coverage > 0).to(chandra_features.dtype)
 
         chandra_features = chandra_features * has_chandra
@@ -960,6 +981,97 @@ def task_for_output_names(names):
     )
 
 
+@register_model("multi_encoder_cnn")
+class MultiEncoderCNN(nn.Module):
+    """N ImageEncoders indépendants, fusion tardive et couvertures par modalité.
+
+    modality_layout: [(name, image_channels, has_mask), ...]
+    Ordre des canaux de x pour chaque modalité : images puis masques.
+    Exemple : radio(1), legacy(3+3), xray(1+1) => 9 canaux.
+    """
+
+    def __init__(
+        self,
+        input_shape,
+        modality_layout,
+        num_classes=2,
+        fusion_hidden_dim=64,
+        use_mask=True,
+        use_coverage=True,
+        dropout_rate=0.5,
+    ):
+        super().__init__()
+        if len(input_shape) != 3:
+            raise ValueError("input_shape doit être (C, H, W)")
+        if not modality_layout:
+            raise ValueError("Au moins une modalité est nécessaire")
+        self.input_shape = tuple(input_shape)
+        self.modality_layout = [tuple(item) for item in modality_layout]
+        self.use_mask = bool(use_mask)
+        self.use_coverage = bool(use_coverage)
+        names = [item[0] for item in self.modality_layout]
+        if len(names) != len(set(names)) or any(not isinstance(n, str) or not n for n in names):
+            raise ValueError("Les noms des modalités doivent être uniques et non vides")
+        for item in self.modality_layout:
+            if (len(item) != 3 or not isinstance(item[1], int)
+                    or isinstance(item[1], bool) or item[1] < 1
+                    or not isinstance(item[2], bool)):
+                raise ValueError(f"Entrée de modality_layout invalide : {item}")
+        expected_channels = sum(count * (2 if masked else 1)
+                                for _, count, masked in self.modality_layout)
+        if expected_channels != input_shape[0]:
+            raise ValueError(
+                f"modality_layout décrit {expected_channels} canaux, "
+                f"mais input_shape en annonce {input_shape[0]}"
+            )
+
+        _, height, width = input_shape
+        self.encoders = nn.ModuleDict({
+            name: ImageEncoder((count * (1 + int(masked and self.use_mask)), height, width))
+            for name, count, masked in self.modality_layout
+        })
+        latent_dim = sum(encoder.output_dim for encoder in self.encoders.values())
+        coverage_dim = len(self.modality_layout) if self.use_coverage else 0
+        self.classifier = nn.Sequential(
+            nn.Linear(latent_dim + coverage_dim, fusion_hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(dropout_rate),
+            nn.Linear(fusion_hidden_dim, num_classes),
+        )
+
+    def transfer_modules(self):
+        return {**dict(self.encoders.items()), "head": self.classifier}
+
+    def forward(self, x):
+        if x.ndim != 4 or tuple(x.shape[1:]) != self.input_shape:
+            raise ValueError(f"Entrée attendue : [B, {self.input_shape}]")
+        features = []
+        coverages = []
+        offset = 0
+        for name, count, has_mask in self.modality_layout:
+            images = x[:, offset:offset + count]
+            offset += count
+            if has_mask:
+                masks = x[:, offset:offset + count].clamp(0, 1)
+                offset += count
+                # Un canal de masque par bande, même pour LEGACY RGB.
+                coverage = masks.mean(dim=(1, 2, 3), keepdim=False).unsqueeze(1)
+                # Les pixels non observés n'apportent pas de signal image.
+                images = images * masks
+                encoder_input = (torch.cat([images, masks], dim=1)
+                                 if self.use_mask else images)
+            else:
+                coverage = x.new_ones((x.shape[0], 1))
+                encoder_input = images
+            encoded = self.encoders[name](encoder_input)
+            # Évite que le biais des CNN produise un signal sur une modalité absente.
+            encoded = encoded * (coverage > 0).to(encoded.dtype)
+            features.append(encoded)
+            if self.use_coverage:
+                coverages.append(coverage)
+        return self.classifier(torch.cat(features + coverages, dim=1))
+
+
 def build_model(config, num_classes, input_shape=None):
     """Construit un modèle enregistré ou importable via 'module:Constructeur'.
 
@@ -984,7 +1096,13 @@ def build_model(config, num_classes, input_shape=None):
             f"Modèle inconnu : {name}. Disponibles : {', '.join(list_models())}. "
             "Ou utiliser module:Constructeur."
         )
-    expected_shape = (1 if config.mode == "raw" else 3, config.size, config.size)
+    modalities = getattr(config, "modalities", None)
+    from .modalities import channel_count, layout
+    if modalities is not None and name not in {"cnn", "image_cnn", "multi_encoder_cnn", "dual_encoder_cnn"}:
+        raise ValueError("Explicit modalities require cnn, image_cnn, dual_encoder_cnn or multi_encoder_cnn")
+    channels = (channel_count(modalities, config.legacy, config.include_masks) if modalities is not None
+                else (1 if config.mode == "raw" else 3))
+    expected_shape = (channels, config.size, config.size)
     if input_shape is not None and tuple(input_shape) != expected_shape:
         raise ValueError(
             f"input_shape doit correspondre aux données : {expected_shape}"
@@ -994,6 +1112,12 @@ def build_model(config, num_classes, input_shape=None):
         raise ValueError(
             "input_shape, in_channels et num_classes sont déduits des données"
         )
+    if name == "multi_encoder_cnn":
+        if modalities is None:
+            raise ValueError("multi_encoder_cnn requires explicit modalities")
+        parameters["modality_layout"] = layout(modalities, config.legacy, config.include_masks)
+    if name == "dual_encoder_cnn" and modalities is not None:
+        parameters["modality_layout"] = layout(modalities, config.legacy, config.include_masks)
     signature = inspect.signature(constructor)
     automatic = {
         "input_shape": expected_shape,

@@ -36,6 +36,28 @@ def flatten(value, prefix=''):
     return result
 
 
+def matched_fold(split_config):
+    """Recognize the matched-cohort manifest contract, without guessing from names."""
+    fold = split_config.get('fold')
+    provenance = split_config.get('provenance', {})
+    if (type(fold) is int and fold >= 0 and isinstance(provenance, dict)
+            and provenance.get('cohort_manifest.json')
+            and provenance.get(f'fold_{fold}.json')):
+        return fold
+    return None
+
+
+def configuration_split(split_config):
+    """Keep shared protocol provenance while excluding the selected fold."""
+    result = {k: v for k, v in split_config.items() if k != 'fold_index'}
+    fold = matched_fold(split_config)
+    if fold is not None:
+        result.pop('fold')
+        result['provenance'] = {k: v for k, v in result['provenance'].items()
+                                if k != f'fold_{fold}.json'}
+    return result
+
+
 @dataclass
 class TrainingRun:
     path: Path
@@ -52,6 +74,7 @@ class TrainingRun:
     cv_plan: dict = field(default_factory=dict)
     phase_report: dict = field(default_factory=dict)
     fold: int | None = None
+    analysis_ignore_code_version: bool = False
 
     @property
     def run_id(self):
@@ -107,13 +130,30 @@ class TrainingRun:
 
     @property
     def configuration_id(self):
+        # Explicit, user-confirmed grouping without rewriting training provenance.
+        override = self.metadata.get('analysis_configuration_id')
+        if override is not None:
+            if not isinstance(override, str) or not re.fullmatch(r'[0-9a-f]{20}', override):
+                raise ValueError('analysis_configuration_id must be a 20-character hexadecimal identifier')
+            return override
+        return self._configuration_fingerprint(ignore_code_version=self.analysis_ignore_code_version)
+
+    @property
+    def original_configuration_id(self):
+        """Strict identity computed from the saved training provenance."""
+        return self._configuration_fingerprint(ignore_code_version=False)
+
+    def _configuration_fingerprint(self, *, ignore_code_version):
         # Seed stays in the configuration: folds of a seeded protocol may aggregate,
         # independent seeds must not silently count as extra folds.
-        ignored = {'name', 'verbose', 'device', 'num_workers', 'cache'}
+        # Bounds are fitted on each fold's training samples, not hyperparameters.
+        # Keep the normalization policy in config and the fitted values in the
+        # original artifacts, but do not split a CV configuration by those values.
+        ignored = {'name', 'verbose', 'device', 'num_workers', 'cache', 'normalization_bounds'}
         config = {k: v for k, v in self.config.items() if k not in ignored}
-        split = {k: v for k, v in self.splits.get('split_config', {}).items() if k != 'fold_index'}
+        split = configuration_split(self.splits.get('split_config', {}))
         return fingerprint([config, split, self.stage, self.metadata.get('normalization'),
-                            self.metadata.get('library_source_sha256')])
+                            None if ignore_code_version else self.metadata.get('library_source_sha256')])
 
     @property
     def noise_method(self):
@@ -128,9 +168,14 @@ class TrainingRun:
 
     def summary(self):
         return dict(run_name=self.run_name, run_id=self.run_id, configuration_name=self.configuration_name, path=str(self.path), experiment_id=self.experiment_id,
-                    configuration_id=self.configuration_id, model=self.config.get('model'),
+                    configuration_id=self.configuration_id,
+                    original_configuration_id=self.original_configuration_id,
+                    analysis_ignore_code_version=self.analysis_ignore_code_version,
+                    library_source_sha256=self.metadata.get('library_source_sha256'),
+                    model=self.config.get('model'),
                     architecture=self.metadata.get('model_class', self.config.get('model')),
                     modalities=self.config.get('mode'), task_type=self.task_type,
+                    radio_source=self.config.get('radio_source', 'RAW'),
                     task=self.config.get('task'), noise_method=self.noise_method, labels=json.dumps(self.labels), fold=self.fold,
                     expected_folds=len(self.cv_plan.get('folds', [])) or self.splits.get('split_config', {}).get('n_folds'),
                     seed=self.config.get('seed'), stage=self.stage, status=self.status,
@@ -294,6 +339,8 @@ def load_run(directory):
         run.threshold_policy = {'method': 'argmax', 'class_order': run.labels}
     split_config = run.splits.get('split_config', {})
     run.fold = split_config.get('fold_index') if split_config.get('n_folds') else None
+    if run.fold is None:
+        run.fold = matched_fold(split_config)
     if run.stage == 'fold':
         # Current CV artifacts omit fold_index; verified pipeline layout fallback.
         match = re.fullmatch(r'fold_(\d+)', run.path.name)

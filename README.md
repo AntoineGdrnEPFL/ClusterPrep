@@ -293,3 +293,15 @@ Augmentations gaussienne et corrélée au faisceau, train uniquement : voir
 [configuration, conventions et expériences](RADIO_NOISE.md), ainsi que la section
 « Augmentation du bruit radio — validation visuelle » du
 [notebook radio/Chandra](notebooks/analyse_cluster_radio_chandra.ipynb).
+
+### Données optiques LEGACY
+
+La sélection JSON `modalities` permet d'ajouter les bandes LEGACY aux CNN ou à une
+fusion d'encodeurs indépendants. Voir le [guide LEGACY](docs/legacy.md) pour les
+options, les exemples RR/RH, les masques, le transfert et la validation.
+
+### Produits radio LOFAR
+
+Le champ JSON `radio_source` sélectionne RAW (défaut) ou un produit tapered, avec
+caches isolés et absence stricte. Voir le [guide et audit de couverture](docs/LOFAR_RADIO_SOURCES.md)
+et la [suite de comparaison](configs/lofar_radio_sources/comparison.json).

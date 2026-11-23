@@ -1,0 +1,1887 @@
+{
+  "samples": {
+    "PSZ2G023.17+86.71": {
+      "cluster_id": "PSZ2G023.17+86.71",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G023.17+86.71/PSZ2G023.17+86.71.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G023.17+86.71/PSZ2G023.17+86.71.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G023.17+86.71/PSZ2G023.17+86.71T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G023.17+86.71/PSZ2G023.17+86.71CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G023.17+86.71",
+        "ra_deg": 196.4731,
+        "dec_deg": 26.5262,
+        "redshift": 0.306,
+        "r500_kpc": 1093.0,
+        "m500_msun": 502999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G023.17+86.71.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G023.17+86.71.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G031.93+78.71": {
+      "cluster_id": "PSZ2G031.93+78.71",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G031.93+78.71/PSZ2G031.93+78.71.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G031.93+78.71/PSZ2G031.93+78.71.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G031.93+78.71/PSZ2G031.93+78.71T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G031.93+78.71/PSZ2G031.93+78.71CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G031.93+78.71",
+        "ra_deg": 205.4709,
+        "dec_deg": 26.3684,
+        "redshift": 0.072,
+        "r500_kpc": 966.0,
+        "m500_msun": 271999999999999.97
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G031.93+78.71.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G031.93+78.71.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G040.58+77.12": {
+      "cluster_id": "PSZ2G040.58+77.12",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G040.58+77.12/PSZ2G040.58+77.12.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G040.58+77.12/PSZ2G040.58+77.12.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G040.58+77.12/PSZ2G040.58+77.12T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G040.58+77.12/PSZ2G040.58+77.12CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G040.58+77.12",
+        "ra_deg": 207.3622,
+        "dec_deg": 28.0946,
+        "redshift": 0.075,
+        "r500_kpc": 955.0,
+        "m500_msun": 262999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G040.58+77.12.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G040.58+77.12.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G046.88+56.48": {
+      "cluster_id": "PSZ2G046.88+56.48",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G046.88+56.48/PSZ2G046.88+56.48.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G046.88+56.48/PSZ2G046.88+56.48.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G046.88+56.48/PSZ2G046.88+56.48T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G046.88+56.48/PSZ2G046.88+56.48CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G046.88+56.48",
+        "ra_deg": 231.0469,
+        "dec_deg": 29.9129,
+        "redshift": 0.115,
+        "r500_kpc": 1191.0,
+        "m500_msun": 530999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G046.88+56.48.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G046.88+56.48.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G048.10+57.16": {
+      "cluster_id": "PSZ2G048.10+57.16",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G048.10+57.16/PSZ2G048.10+57.16.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G048.10+57.16/PSZ2G048.10+57.16.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G048.10+57.16/PSZ2G048.10+57.16T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G048.10+57.16/PSZ2G048.10+57.16CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G048.10+57.16",
+        "ra_deg": 230.3161,
+        "dec_deg": 30.6278,
+        "redshift": 0.078,
+        "r500_kpc": 1058.0,
+        "m500_msun": 358999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G048.10+57.16.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G048.10+57.16.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G048.10+57.16.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G048.75+53.18": {
+      "cluster_id": "PSZ2G048.75+53.18",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G048.75+53.18/PSZ2G048.75+53.18.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G048.75+53.18/PSZ2G048.75+53.18.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G048.75+53.18/PSZ2G048.75+53.18T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G048.75+53.18/PSZ2G048.75+53.18CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G048.75+53.18",
+        "ra_deg": 234.9669,
+        "dec_deg": 30.696,
+        "redshift": 0.098,
+        "r500_kpc": 935.0,
+        "m500_msun": 252999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G048.75+53.18.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G049.18+65.05": {
+      "cluster_id": "PSZ2G049.18+65.05",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G049.18+65.05/PSZ2G049.18+65.05.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G049.18+65.05/PSZ2G049.18+65.05.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G049.18+65.05/PSZ2G049.18+65.05T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G049.18+65.05/PSZ2G049.18+65.05CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G049.18+65.05",
+        "ra_deg": 221.1194,
+        "dec_deg": 31.2334,
+        "redshift": 0.234,
+        "r500_kpc": 1099.0,
+        "m500_msun": 472999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G049.18+65.05.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G049.32+44.37": {
+      "cluster_id": "PSZ2G049.32+44.37",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G049.32+44.37/PSZ2G049.32+44.37.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G049.32+44.37/PSZ2G049.32+44.37.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G049.32+44.37/PSZ2G049.32+44.37T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G049.32+44.37/PSZ2G049.32+44.37CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G049.32+44.37",
+        "ra_deg": 245.1404,
+        "dec_deg": 29.8941,
+        "redshift": 0.097,
+        "r500_kpc": 1059.0,
+        "m500_msun": 366999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G049.32+44.37.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G049.32+44.37.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G050.46+67.54": {
+      "cluster_id": "PSZ2G050.46+67.54",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G050.46+67.54/PSZ2G050.46+67.54.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G050.46+67.54/PSZ2G050.46+67.54.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G050.46+67.54/PSZ2G050.46+67.54T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G050.46+67.54/PSZ2G050.46+67.54CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G050.46+67.54",
+        "ra_deg": 218.168,
+        "dec_deg": 31.5879,
+        "redshift": 0.131,
+        "r500_kpc": 971.0,
+        "m500_msun": 291999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G050.46+67.54.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G053.53+59.52": {
+      "cluster_id": "PSZ2G053.53+59.52",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G053.53+59.52/PSZ2G053.53+59.52.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G053.53+59.52/PSZ2G053.53+59.52.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G053.53+59.52/PSZ2G053.53+59.52T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G053.53+59.52/PSZ2G053.53+59.52CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G053.53+59.52",
+        "ra_deg": 227.5546,
+        "dec_deg": 33.4915,
+        "redshift": 0.113,
+        "r500_kpc": 1231.0,
+        "m500_msun": 584999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G053.53+59.52.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G053.53+59.52.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G055.59+31.85": {
+      "cluster_id": "PSZ2G055.59+31.85",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G055.59+31.85/PSZ2G055.59+31.85.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G055.59+31.85/PSZ2G055.59+31.85.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G055.59+31.85/PSZ2G055.59+31.85T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G055.59+31.85/PSZ2G055.59+31.85CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G055.59+31.85",
+        "ra_deg": 260.615,
+        "dec_deg": 32.1354,
+        "redshift": 0.224,
+        "r500_kpc": 1302.0,
+        "m500_msun": 777999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G055.59+31.85.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G055.59+31.85.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G056.77+36.32": {
+      "cluster_id": "PSZ2G056.77+36.32",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G056.77+36.32/PSZ2G056.77+36.32.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G056.77+36.32/PSZ2G056.77+36.32.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G056.77+36.32/PSZ2G056.77+36.32T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G056.77+36.32/PSZ2G056.77+36.32CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G056.77+36.32",
+        "ra_deg": 255.6663,
+        "dec_deg": 34.0511,
+        "redshift": 0.095,
+        "r500_kpc": 1124.0,
+        "m500_msun": 437999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G056.77+36.32.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G056.77+36.32.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G057.61+34.93": {
+      "cluster_id": "PSZ2G057.61+34.93",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.61+34.93/PSZ2G057.61+34.93.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.61+34.93/PSZ2G057.61+34.93.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.61+34.93/PSZ2G057.61+34.93T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.61+34.93/PSZ2G057.61+34.93CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G057.61+34.93",
+        "ra_deg": 257.4672,
+        "dec_deg": 34.4613,
+        "redshift": 0.08,
+        "r500_kpc": 1071.0,
+        "m500_msun": 372999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G057.61+34.93.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G057.61+34.93.fits"
+      ],
+      "labels": [
+        "DE",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        0
+      ]
+    },
+    "PSZ2G057.78+52.32": {
+      "cluster_id": "PSZ2G057.78+52.32",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.78+52.32/PSZ2G057.78+52.32.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.78+52.32/PSZ2G057.78+52.32.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.78+52.32/PSZ2G057.78+52.32T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.78+52.32/PSZ2G057.78+52.32CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G057.78+52.32",
+        "ra_deg": 236.2149,
+        "dec_deg": 36.1219,
+        "redshift": 0.065,
+        "r500_kpc": 926.0,
+        "m500_msun": 237999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G057.78+52.32.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G057.92+27.64": {
+      "cluster_id": "PSZ2G057.92+27.64",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.92+27.64/PSZ2G057.92+27.64.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.92+27.64/PSZ2G057.92+27.64.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.92+27.64/PSZ2G057.92+27.64T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G057.92+27.64/PSZ2G057.92+27.64CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G057.92+27.64",
+        "ra_deg": 266.0678,
+        "dec_deg": 32.9986,
+        "redshift": 0.076,
+        "r500_kpc": 961.0,
+        "m500_msun": 267999999999999.97
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G057.92+27.64.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G060.55+27.00": {
+      "cluster_id": "PSZ2G060.55+27.00",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G060.55+27.00/PSZ2G060.55+27.00.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G060.55+27.00/PSZ2G060.55+27.00.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G060.55+27.00/PSZ2G060.55+27.00T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G060.55+27.00/PSZ2G060.55+27.00CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G060.55+27.00",
+        "ra_deg": 267.5745,
+        "dec_deg": 35.0761,
+        "redshift": 0.171,
+        "r500_kpc": 1015.0,
+        "m500_msun": 347999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G060.55+27.00.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G065.28+44.53": {
+      "cluster_id": "PSZ2G065.28+44.53",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G065.28+44.53/PSZ2G065.28+44.53.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G065.28+44.53/PSZ2G065.28+44.53.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G065.28+44.53/PSZ2G065.28+44.53T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G065.28+44.53/PSZ2G065.28+44.53CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G065.28+44.53",
+        "ra_deg": 246.0751,
+        "dec_deg": 41.247,
+        "redshift": 0.182,
+        "r500_kpc": 1050.0,
+        "m500_msun": 389999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G065.28+44.53.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G066.41+27.03": {
+      "cluster_id": "PSZ2G066.41+27.03",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G066.41+27.03/PSZ2G066.41+27.03.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G066.41+27.03/PSZ2G066.41+27.03.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G066.41+27.03/PSZ2G066.41+27.03T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G066.41+27.03/PSZ2G066.41+27.03CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G066.41+27.03",
+        "ra_deg": 269.2019,
+        "dec_deg": 40.1327,
+        "redshift": 0.576,
+        "r500_kpc": 1134.0,
+        "m500_msun": 769999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G066.41+27.03.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G066.41+27.03.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G066.68+68.44": {
+      "cluster_id": "PSZ2G066.68+68.44",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G066.68+68.44/PSZ2G066.68+68.44.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G066.68+68.44/PSZ2G066.68+68.44.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G066.68+68.44/PSZ2G066.68+68.44T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G066.68+68.44/PSZ2G066.68+68.44CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G066.68+68.44",
+        "ra_deg": 215.432,
+        "dec_deg": 37.2821,
+        "redshift": 0.163,
+        "r500_kpc": 1047.0,
+        "m500_msun": 378999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G066.68+68.44.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G067.52+34.75": {
+      "cluster_id": "PSZ2G067.52+34.75",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G067.52+34.75/PSZ2G067.52+34.75.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G067.52+34.75/PSZ2G067.52+34.75.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G067.52+34.75/PSZ2G067.52+34.75T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G067.52+34.75/PSZ2G067.52+34.75CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G067.52+34.75",
+        "ra_deg": 259.3134,
+        "dec_deg": 42.4618,
+        "redshift": 0.175,
+        "r500_kpc": 1107.0,
+        "m500_msun": 453999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G067.52+34.75.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G071.39+59.54": {
+      "cluster_id": "PSZ2G071.39+59.54",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G071.39+59.54/PSZ2G071.39+59.54.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G071.39+59.54/PSZ2G071.39+59.54.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G071.39+59.54/PSZ2G071.39+59.54T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G071.39+59.54/PSZ2G071.39+59.54CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G071.39+59.54",
+        "ra_deg": 225.3359,
+        "dec_deg": 42.3464,
+        "redshift": 0.292,
+        "r500_kpc": 1157.0,
+        "m500_msun": 586999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G071.39+59.54.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G071.39+59.54.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G071.63+29.78": {
+      "cluster_id": "PSZ2G071.63+29.78",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G071.63+29.78/PSZ2G071.63+29.78.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G071.63+29.78/PSZ2G071.63+29.78.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G071.63+29.78/PSZ2G071.63+29.78T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G071.63+29.78/PSZ2G071.63+29.78CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G071.63+29.78",
+        "ra_deg": 266.8257,
+        "dec_deg": 45.1899,
+        "redshift": 0.157,
+        "r500_kpc": 1080.0,
+        "m500_msun": 412999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G071.63+29.78.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G073.97-27.82": {
+      "cluster_id": "PSZ2G073.97-27.82",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G073.97-27.82/PSZ2G073.97-27.82.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G073.97-27.82/PSZ2G073.97-27.82.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G073.97-27.82/PSZ2G073.97-27.82T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G073.97-27.82/PSZ2G073.97-27.82CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G073.97-27.82",
+        "ra_deg": 328.4233,
+        "dec_deg": 17.6986,
+        "redshift": 0.233,
+        "r500_kpc": 1402.0,
+        "m500_msun": 979999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G073.97-27.82.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G076.55+60.29": {
+      "cluster_id": "PSZ2G076.55+60.29",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G076.55+60.29/PSZ2G076.55+60.29.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G076.55+60.29/PSZ2G076.55+60.29.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G076.55+60.29/PSZ2G076.55+60.29T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G076.55+60.29/PSZ2G076.55+60.29CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G076.55+60.29",
+        "ra_deg": 223.0302,
+        "dec_deg": 44.4554,
+        "redshift": 0.287,
+        "r500_kpc": 1031.0,
+        "m500_msun": 412999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G076.55+60.29.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G076.55+60.29.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G077.90-26.63": {
+      "cluster_id": "PSZ2G077.90-26.63",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G077.90-26.63/PSZ2G077.90-26.63.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G077.90-26.63/PSZ2G077.90-26.63.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G077.90-26.63/PSZ2G077.90-26.63T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G077.90-26.63/PSZ2G077.90-26.63CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G077.90-26.63",
+        "ra_deg": 330.2281,
+        "dec_deg": 20.9701,
+        "redshift": 0.147,
+        "r500_kpc": 1160.0,
+        "m500_msun": 505999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G077.90-26.63.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G077.90-26.63.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G080.16+57.65": {
+      "cluster_id": "PSZ2G080.16+57.65",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.16+57.65/PSZ2G080.16+57.65.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.16+57.65/PSZ2G080.16+57.65.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.16+57.65/PSZ2G080.16+57.65T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.16+57.65/PSZ2G080.16+57.65CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G080.16+57.65",
+        "ra_deg": 225.2369,
+        "dec_deg": 47.2874,
+        "redshift": 0.088,
+        "r500_kpc": 937.0,
+        "m500_msun": 250999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G080.16+57.65.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G080.16+57.65.fits"
+      ],
+      "labels": [
+        "DE",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        0
+      ]
+    },
+    "PSZ2G080.41-33.24": {
+      "cluster_id": "PSZ2G080.41-33.24",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.41-33.24/PSZ2G080.41-33.24.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.41-33.24/PSZ2G080.41-33.24.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.41-33.24/PSZ2G080.41-33.24T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.41-33.24/PSZ2G080.41-33.24CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G080.41-33.24",
+        "ra_deg": 336.5396,
+        "dec_deg": 17.3767,
+        "redshift": 0.107,
+        "r500_kpc": 1066.0,
+        "m500_msun": 376999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G080.41-33.24.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G080.64+64.31": {
+      "cluster_id": "PSZ2G080.64+64.31",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.64+64.31/PSZ2G080.64+64.31.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.64+64.31/PSZ2G080.64+64.31.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.64+64.31/PSZ2G080.64+64.31T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G080.64+64.31/PSZ2G080.64+64.31CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G080.64+64.31",
+        "ra_deg": 216.8313,
+        "dec_deg": 44.1308,
+        "redshift": 0.502,
+        "r500_kpc": 1026.0,
+        "m500_msun": 522999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G080.64+64.31.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G083.29-31.03": {
+      "cluster_id": "PSZ2G083.29-31.03",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G083.29-31.03/PSZ2G083.29-31.03.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G083.29-31.03/PSZ2G083.29-31.03.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G083.29-31.03/PSZ2G083.29-31.03T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G083.29-31.03/PSZ2G083.29-31.03CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G083.29-31.03",
+        "ra_deg": 337.1296,
+        "dec_deg": 20.6221,
+        "redshift": 0.412,
+        "r500_kpc": 1239.0,
+        "m500_msun": 826999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G083.29-31.03.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G083.29-31.03.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G083.86+85.09": {
+      "cluster_id": "PSZ2G083.86+85.09",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G083.86+85.09/PSZ2G083.86+85.09.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G083.86+85.09/PSZ2G083.86+85.09.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G083.86+85.09/PSZ2G083.86+85.09T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G083.86+85.09/PSZ2G083.86+85.09CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G083.86+85.09",
+        "ra_deg": 196.4623,
+        "dec_deg": 30.8931,
+        "redshift": 0.183,
+        "r500_kpc": 1114.0,
+        "m500_msun": 465999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G083.86+85.09.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G084.10+58.72": {
+      "cluster_id": "PSZ2G084.10+58.72",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G084.10+58.72/PSZ2G084.10+58.72.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G084.10+58.72/PSZ2G084.10+58.72.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G084.10+58.72/PSZ2G084.10+58.72T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G084.10+58.72/PSZ2G084.10+58.72CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G084.10+58.72",
+        "ra_deg": 222.3158,
+        "dec_deg": 48.5589,
+        "redshift": 0.731,
+        "r500_kpc": 947.0,
+        "m500_msun": 539999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G084.10+58.72.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G084.10+58.72.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G086.54-26.67": {
+      "cluster_id": "PSZ2G086.54-26.67",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G086.54-26.67/PSZ2G086.54-26.67.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G086.54-26.67/PSZ2G086.54-26.67.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G086.54-26.67/PSZ2G086.54-26.67T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G086.54-26.67/PSZ2G086.54-26.67CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G086.54-26.67",
+        "ra_deg": 336.7802,
+        "dec_deg": 25.8145,
+        "redshift": 0.165,
+        "r500_kpc": 1015.0,
+        "m500_msun": 344999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G086.54-26.67.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G092.69+59.92": {
+      "cluster_id": "PSZ2G092.69+59.92",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G092.69+59.92/PSZ2G092.69+59.92.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G092.69+59.92/PSZ2G092.69+59.92.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G092.69+59.92/PSZ2G092.69+59.92T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G092.69+59.92/PSZ2G092.69+59.92CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G092.69+59.92",
+        "ra_deg": 216.6347,
+        "dec_deg": 51.2521,
+        "redshift": 0.462,
+        "r500_kpc": 1013.0,
+        "m500_msun": 478999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G092.69+59.92.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G099.86+58.45": {
+      "cluster_id": "PSZ2G099.86+58.45",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G099.86+58.45/PSZ2G099.86+58.45.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G099.86+58.45/PSZ2G099.86+58.45.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G099.86+58.45/PSZ2G099.86+58.45T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G099.86+58.45/PSZ2G099.86+58.45CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G099.86+58.45",
+        "ra_deg": 213.6782,
+        "dec_deg": 54.7836,
+        "redshift": 0.63,
+        "r500_kpc": 1067.0,
+        "m500_msun": 684999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G099.86+58.45.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G099.86+58.45.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G100.45-38.42": {
+      "cluster_id": "PSZ2G100.45-38.42",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G100.45-38.42/PSZ2G100.45-38.42.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G100.45-38.42/PSZ2G100.45-38.42.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G100.45-38.42/PSZ2G100.45-38.42T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G100.45-38.42/PSZ2G100.45-38.42CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G100.45-38.42",
+        "ra_deg": 354.1311,
+        "dec_deg": 21.1519,
+        "redshift": 0.057,
+        "r500_kpc": 853.0,
+        "m500_msun": 183999999999999.97
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G100.45-38.42.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G106.61+66.71": {
+      "cluster_id": "PSZ2G106.61+66.71",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G106.61+66.71/PSZ2G106.61+66.71.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G106.61+66.71/PSZ2G106.61+66.71.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G106.61+66.71/PSZ2G106.61+66.71T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G106.61+66.71/PSZ2G106.61+66.71CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G106.61+66.71",
+        "ra_deg": 202.6355,
+        "dec_deg": 49.1529,
+        "redshift": 0.331,
+        "r500_kpc": 1056.0,
+        "m500_msun": 466999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G106.61+66.71.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G106.61+66.71.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G107.10+65.32": {
+      "cluster_id": "PSZ2G107.10+65.32",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G107.10+65.32/PSZ2G107.10+65.32.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G107.10+65.32/PSZ2G107.10+65.32.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G107.10+65.32/PSZ2G107.10+65.32T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G107.10+65.32/PSZ2G107.10+65.32CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G107.10+65.32",
+        "ra_deg": 203.1777,
+        "dec_deg": 50.5183,
+        "redshift": 0.28,
+        "r500_kpc": 1300.0,
+        "m500_msun": 821999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G107.10+65.32.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G107.10+65.32.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G107.10+65.32.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G111.75+70.37": {
+      "cluster_id": "PSZ2G111.75+70.37",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G111.75+70.37/PSZ2G111.75+70.37.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G111.75+70.37/PSZ2G111.75+70.37.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G111.75+70.37/PSZ2G111.75+70.37T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G111.75+70.37/PSZ2G111.75+70.37CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G111.75+70.37",
+        "ra_deg": 198.2642,
+        "dec_deg": 46.2812,
+        "redshift": 0.183,
+        "r500_kpc": 1088.0,
+        "m500_msun": 433999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G111.75+70.37.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G111.75+70.37.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G111.75+70.37.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G113.91-37.01": {
+      "cluster_id": "PSZ2G113.91-37.01",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G113.91-37.01/PSZ2G113.91-37.01.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G113.91-37.01/PSZ2G113.91-37.01.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G113.91-37.01/PSZ2G113.91-37.01T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G113.91-37.01/PSZ2G113.91-37.01CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G113.91-37.01",
+        "ra_deg": 4.9004,
+        "dec_deg": 25.2965,
+        "redshift": 0.371,
+        "r500_kpc": 1223.0,
+        "m500_msun": 757999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G113.91-37.01.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G113.91-37.01.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G113.91-37.01.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G114.31+64.89": {
+      "cluster_id": "PSZ2G114.31+64.89",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G114.31+64.89/PSZ2G114.31+64.89.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G114.31+64.89/PSZ2G114.31+64.89.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G114.31+64.89/PSZ2G114.31+64.89T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G114.31+64.89/PSZ2G114.31+64.89CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G114.31+64.89",
+        "ra_deg": 198.7658,
+        "dec_deg": 51.8329,
+        "redshift": 0.284,
+        "r500_kpc": 1216.0,
+        "m500_msun": 675999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G114.31+64.89.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G114.31+64.89.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G114.79-33.71": {
+      "cluster_id": "PSZ2G114.79-33.71",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G114.79-33.71/PSZ2G114.79-33.71.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G114.79-33.71/PSZ2G114.79-33.71.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G114.79-33.71/PSZ2G114.79-33.71T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G114.79-33.71/PSZ2G114.79-33.71CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G114.79-33.71",
+        "ra_deg": 5.1456,
+        "dec_deg": 28.6657,
+        "redshift": 0.094,
+        "r500_kpc": 1075.0,
+        "m500_msun": 381999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G114.79-33.71.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G138.32-39.82": {
+      "cluster_id": "PSZ2G138.32-39.82",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G138.32-39.82/PSZ2G138.32-39.82.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G138.32-39.82/PSZ2G138.32-39.82.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G138.32-39.82/PSZ2G138.32-39.82T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G138.32-39.82/PSZ2G138.32-39.82CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G138.32-39.82",
+        "ra_deg": 25.5157,
+        "dec_deg": 21.533,
+        "redshift": 0.28,
+        "r500_kpc": 1169.0,
+        "m500_msun": 598000000000000.0
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G138.32-39.82.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G138.32-39.82.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G139.18+56.37": {
+      "cluster_id": "PSZ2G139.18+56.37",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G139.18+56.37/PSZ2G139.18+56.37.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G139.18+56.37/PSZ2G139.18+56.37.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G139.18+56.37/PSZ2G139.18+56.37T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G139.18+56.37/PSZ2G139.18+56.37CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G139.18+56.37",
+        "ra_deg": 175.5928,
+        "dec_deg": 58.5227,
+        "redshift": 0.322,
+        "r500_kpc": 1205.0,
+        "m500_msun": 686999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G139.18+56.37.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G139.18+56.37.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G143.26+65.24": {
+      "cluster_id": "PSZ2G143.26+65.24",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G143.26+65.24/PSZ2G143.26+65.24.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G143.26+65.24/PSZ2G143.26+65.24.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G143.26+65.24/PSZ2G143.26+65.24T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G143.26+65.24/PSZ2G143.26+65.24CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G143.26+65.24",
+        "ra_deg": 179.8427,
+        "dec_deg": 49.7742,
+        "redshift": 0.363,
+        "r500_kpc": 1230.0,
+        "m500_msun": 764999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G143.26+65.24.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G143.26+65.24.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G148.36+75.23": {
+      "cluster_id": "PSZ2G148.36+75.23",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G148.36+75.23/PSZ2G148.36+75.23.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G148.36+75.23/PSZ2G148.36+75.23.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G148.36+75.23/PSZ2G148.36+75.23T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G148.36+75.23/PSZ2G148.36+75.23CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G148.36+75.23",
+        "ra_deg": 184.6185,
+        "dec_deg": 40.2211,
+        "redshift": 0.304,
+        "r500_kpc": 1073.0,
+        "m500_msun": 474999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G148.36+75.23.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G148.36+75.23.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G150.56+58.32": {
+      "cluster_id": "PSZ2G150.56+58.32",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G150.56+58.32/PSZ2G150.56+58.32.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G150.56+58.32/PSZ2G150.56+58.32.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G150.56+58.32/PSZ2G150.56+58.32T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G150.56+58.32/PSZ2G150.56+58.32CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G150.56+58.32",
+        "ra_deg": 168.7952,
+        "dec_deg": 53.3275,
+        "redshift": 0.47,
+        "r500_kpc": 1175.0,
+        "m500_msun": 754999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G150.56+58.32.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G150.56+58.32.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G160.83+81.66": {
+      "cluster_id": "PSZ2G160.83+81.66",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G160.83+81.66/PSZ2G160.83+81.66.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G160.83+81.66/PSZ2G160.83+81.66.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G160.83+81.66/PSZ2G160.83+81.66T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G160.83+81.66/PSZ2G160.83+81.66CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G160.83+81.66",
+        "ra_deg": 186.725,
+        "dec_deg": 33.5703,
+        "redshift": 0.888,
+        "r500_kpc": 906.0,
+        "m500_msun": 569999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G160.83+81.66.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G160.83+81.66.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G163.87+48.54": {
+      "cluster_id": "PSZ2G163.87+48.54",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G163.87+48.54/PSZ2G163.87+48.54.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G163.87+48.54/PSZ2G163.87+48.54.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G163.87+48.54/PSZ2G163.87+48.54T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G163.87+48.54/PSZ2G163.87+48.54CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G163.87+48.54",
+        "ra_deg": 148.2005,
+        "dec_deg": 51.8883,
+        "redshift": 0.214,
+        "r500_kpc": 1013.0,
+        "m500_msun": 361999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G163.87+48.54.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G164.65+46.37": {
+      "cluster_id": "PSZ2G164.65+46.37",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G164.65+46.37/PSZ2G164.65+46.37.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G164.65+46.37/PSZ2G164.65+46.37.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G164.65+46.37/PSZ2G164.65+46.37T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G164.65+46.37/PSZ2G164.65+46.37CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G164.65+46.37",
+        "ra_deg": 144.5898,
+        "dec_deg": 52.0336,
+        "redshift": 0.342,
+        "r500_kpc": 1144.0,
+        "m500_msun": 600999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G164.65+46.37.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G164.65+46.37.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G165.46+66.15": {
+      "cluster_id": "PSZ2G165.46+66.15",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G165.46+66.15/PSZ2G165.46+66.15.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G165.46+66.15/PSZ2G165.46+66.15.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G165.46+66.15/PSZ2G165.46+66.15T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G165.46+66.15/PSZ2G165.46+66.15CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G165.46+66.15",
+        "ra_deg": 170.9186,
+        "dec_deg": 43.0135,
+        "redshift": 0.196,
+        "r500_kpc": 1027.0,
+        "m500_msun": 369999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G165.46+66.15.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G165.46+66.15.fits"
+      ],
+      "labels": [
+        "DE",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        0
+      ]
+    },
+    "PSZ2G166.09+43.38": {
+      "cluster_id": "PSZ2G166.09+43.38",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G166.09+43.38/PSZ2G166.09+43.38.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G166.09+43.38/PSZ2G166.09+43.38.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G166.09+43.38/PSZ2G166.09+43.38T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G166.09+43.38/PSZ2G166.09+43.38CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G166.09+43.38",
+        "ra_deg": 139.4836,
+        "dec_deg": 51.7221,
+        "redshift": 0.217,
+        "r500_kpc": 1251.0,
+        "m500_msun": 684999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G166.09+43.38.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G166.09+43.38.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G166.62+42.13": {
+      "cluster_id": "PSZ2G166.62+42.13",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G166.62+42.13/PSZ2G166.62+42.13.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G166.62+42.13/PSZ2G166.62+42.13.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G166.62+42.13/PSZ2G166.62+42.13T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G166.62+42.13/PSZ2G166.62+42.13CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G166.62+42.13",
+        "ra_deg": 137.3948,
+        "dec_deg": 51.5489,
+        "redshift": 0.232,
+        "r500_kpc": 1145.0,
+        "m500_msun": 533999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G166.62+42.13.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G166.62+42.13.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G166.62+42.13.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G172.63+35.15": {
+      "cluster_id": "PSZ2G172.63+35.15",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G172.63+35.15/PSZ2G172.63+35.15.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G172.63+35.15/PSZ2G172.63+35.15.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G172.63+35.15/PSZ2G172.63+35.15T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G172.63+35.15/PSZ2G172.63+35.15CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G172.63+35.15",
+        "ra_deg": 126.3699,
+        "dec_deg": 47.1532,
+        "redshift": 0.127,
+        "r500_kpc": 1071.0,
+        "m500_msun": 389999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G172.63+35.15.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G172.63+35.15.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G176.27+37.54": {
+      "cluster_id": "PSZ2G176.27+37.54",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G176.27+37.54/PSZ2G176.27+37.54.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G176.27+37.54/PSZ2G176.27+37.54.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G176.27+37.54/PSZ2G176.27+37.54T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G176.27+37.54/PSZ2G176.27+37.54CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G176.27+37.54",
+        "ra_deg": 130.0378,
+        "dec_deg": 44.3618,
+        "redshift": 0.567,
+        "r500_kpc": 1056.0,
+        "m500_msun": 613999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G176.27+37.54.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G176.27+37.54.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G179.09+60.12": {
+      "cluster_id": "PSZ2G179.09+60.12",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G179.09+60.12/PSZ2G179.09+60.12.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G179.09+60.12/PSZ2G179.09+60.12.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G179.09+60.12/PSZ2G179.09+60.12T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G179.09+60.12/PSZ2G179.09+60.12CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G179.09+60.12",
+        "ra_deg": 160.1864,
+        "dec_deg": 39.9592,
+        "redshift": 0.137,
+        "r500_kpc": 1061.0,
+        "m500_msun": 383999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G179.09+60.12.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G179.09+60.12.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G180.60+76.65": {
+      "cluster_id": "PSZ2G180.60+76.65",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G180.60+76.65/PSZ2G180.60+76.65.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G180.60+76.65/PSZ2G180.60+76.65.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G180.60+76.65/PSZ2G180.60+76.65T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G180.60+76.65/PSZ2G180.60+76.65CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G180.60+76.65",
+        "ra_deg": 179.311,
+        "dec_deg": 33.611,
+        "redshift": 0.214,
+        "r500_kpc": 1218.0,
+        "m500_msun": 629999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G180.60+76.65.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G181.06+48.47": {
+      "cluster_id": "PSZ2G181.06+48.47",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G181.06+48.47/PSZ2G181.06+48.47.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G181.06+48.47/PSZ2G181.06+48.47.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G181.06+48.47/PSZ2G181.06+48.47T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G181.06+48.47/PSZ2G181.06+48.47CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G181.06+48.47",
+        "ra_deg": 144.8501,
+        "dec_deg": 40.7576,
+        "redshift": 0.24,
+        "r500_kpc": 1057.0,
+        "m500_msun": 423000000000000.0
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G181.06+48.47.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G181.06+48.47.fits"
+      ],
+      "labels": [
+        "DE",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        0
+      ]
+    },
+    "PSZ2G184.68+28.91": {
+      "cluster_id": "PSZ2G184.68+28.91",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G184.68+28.91/PSZ2G184.68+28.91.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G184.68+28.91/PSZ2G184.68+28.91.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G184.68+28.91/PSZ2G184.68+28.91T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G184.68+28.91/PSZ2G184.68+28.91CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G184.68+28.91",
+        "ra_deg": 120.2399,
+        "dec_deg": 36.0972,
+        "redshift": 0.288,
+        "r500_kpc": 1134.0,
+        "m500_msun": 549999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G184.68+28.91.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G184.68+28.91.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G186.37+37.26": {
+      "cluster_id": "PSZ2G186.37+37.26",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G186.37+37.26/PSZ2G186.37+37.26.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G186.37+37.26/PSZ2G186.37+37.26.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G186.37+37.26/PSZ2G186.37+37.26T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G186.37+37.26/PSZ2G186.37+37.26CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G186.37+37.26",
+        "ra_deg": 130.7485,
+        "dec_deg": 36.3528,
+        "redshift": 0.282,
+        "r500_kpc": 1431.0,
+        "m500_msun": 1099999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G186.37+37.26.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G186.37+37.26.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G186.99+38.65": {
+      "cluster_id": "PSZ2G186.99+38.65",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G186.99+38.65/PSZ2G186.99+38.65.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G186.99+38.65/PSZ2G186.99+38.65.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G186.99+38.65/PSZ2G186.99+38.65T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G186.99+38.65/PSZ2G186.99+38.65CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G186.99+38.65",
+        "ra_deg": 132.5385,
+        "dec_deg": 36.0766,
+        "redshift": 0.378,
+        "r500_kpc": 1178.0,
+        "m500_msun": 683999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G186.99+38.65.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G186.99+38.65.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G186.99+38.65.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G189.31+59.24": {
+      "cluster_id": "PSZ2G189.31+59.24",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G189.31+59.24/PSZ2G189.31+59.24.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G189.31+59.24/PSZ2G189.31+59.24.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G189.31+59.24/PSZ2G189.31+59.24T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G189.31+59.24/PSZ2G189.31+59.24CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G189.31+59.24",
+        "ra_deg": 157.9544,
+        "dec_deg": 35.0406,
+        "redshift": 0.126,
+        "r500_kpc": 1007.0,
+        "m500_msun": 324000000000000.0
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G189.31+59.24.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G189.31+59.24.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G190.61+66.46": {
+      "cluster_id": "PSZ2G190.61+66.46",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G190.61+66.46/PSZ2G190.61+66.46.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G190.61+66.46/PSZ2G190.61+66.46.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G190.61+66.46/PSZ2G190.61+66.46T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G190.61+66.46/PSZ2G190.61+66.46CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G190.61+66.46",
+        "ra_deg": 166.5376,
+        "dec_deg": 33.572,
+        "redshift": 0.488,
+        "r500_kpc": 1053.0,
+        "m500_msun": 554999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G190.61+66.46.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G190.61+66.46.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G190.61+66.46.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G192.18+56.12": {
+      "cluster_id": "PSZ2G192.18+56.12",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G192.18+56.12/PSZ2G192.18+56.12.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G192.18+56.12/PSZ2G192.18+56.12.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G192.18+56.12/PSZ2G192.18+56.12T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G192.18+56.12/PSZ2G192.18+56.12CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G192.18+56.12",
+        "ra_deg": 154.0911,
+        "dec_deg": 33.6604,
+        "redshift": 0.124,
+        "r500_kpc": 1045.0,
+        "m500_msun": 361999999999999.94
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G192.18+56.12.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G192.18+56.12.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH"
+      ],
+      "rr_rh_known_mask": [
+        0,
+        1
+      ]
+    },
+    "PSZ2G195.60+44.06": {
+      "cluster_id": "PSZ2G195.60+44.06",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G195.60+44.06/PSZ2G195.60+44.06.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G195.60+44.06/PSZ2G195.60+44.06.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G195.60+44.06/PSZ2G195.60+44.06T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G195.60+44.06/PSZ2G195.60+44.06CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G195.60+44.06",
+        "ra_deg": 140.0993,
+        "dec_deg": 30.5038,
+        "redshift": 0.295,
+        "r500_kpc": 1172.0,
+        "m500_msun": 612999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/NDE/PSZ2G195.60+44.06.fits"
+      ],
+      "labels": [
+        "NDE"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    },
+    "PSZ2G205.90+73.76": {
+      "cluster_id": "PSZ2G205.90+73.76",
+      "raw_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G205.90+73.76/PSZ2G205.90+73.76.fits",
+      "radio_paths": {
+        "RAW": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G205.90+73.76/PSZ2G205.90+73.76.fits",
+        "T50kpcSUB": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G205.90+73.76/PSZ2G205.90+73.76T50kpcSUB.fits"
+      },
+      "chandra_path": "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/fits/PSZ2G205.90+73.76/PSZ2G205.90+73.76CHANDRA.fits",
+      "physical_record": {
+        "cluster_id": "PSZ2G205.90+73.76",
+        "ra_deg": 174.5534,
+        "dec_deg": 27.9203,
+        "redshift": 0.447,
+        "r500_kpc": 1177.0,
+        "m500_msun": 738999999999999.9
+      },
+      "annotation_paths": [
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/DE/PSZ2G205.90+73.76.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RH/PSZ2G205.90+73.76.fits",
+        "/Users/antoinegdrn/PH_Project_I/scratch/data/PSZ2/classified/RAW/RR/PSZ2G205.90+73.76.fits"
+      ],
+      "labels": [
+        "DE",
+        "RH",
+        "RR"
+      ],
+      "rr_rh_known_mask": [
+        1,
+        1
+      ]
+    }
+  },
+  "cache_root": "/Users/antoinegdrn/PH_Project_I/outputs/optional_chandra_phase6/cache",
+  "counts": {
+    "n": 65,
+    "RR_positive": 12,
+    "RH_positive": 40,
+    "RR_negative": 21,
+    "RH_negative": 21,
+    "RR_unknown": 32,
+    "RH_unknown": 4,
+    "combination_00": 21,
+    "combination_10": 0,
+    "combination_01": 0,
+    "combination_11": 8,
+    "combination_1?": 4,
+    "combination_?1": 32,
+    "combination_??": 0,
+    "combination_0?": 0,
+    "combination_?0": 0,
+    "annotation_RR": 12,
+    "annotation_RH": 40,
+    "annotation_cRR": 0,
+    "annotation_cRH": 0,
+    "annotation_NDE": 21
+  }
+}

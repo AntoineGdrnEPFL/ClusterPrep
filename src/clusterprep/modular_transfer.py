@@ -114,7 +114,7 @@ def resolve_module(model, name):
     if any(id(m) not in registered for m in groups.values()):
         raise ValueError("Transfer groups must be registered modules")
     first, *rest = name.split(".")
-    aliases = {"radio_encoder": "radio", "xray_encoder": "xray", "classifier": "head"}
+    aliases = {"radio_encoder": "radio", "xray_encoder": "xray", "classifier": "head", "optical_encoder": "legacy", "legacy_encoder": "legacy"}
     if first in groups:
         module = groups[first]
     else:
@@ -260,6 +260,7 @@ def _load_source(spec, factory, checkpoint_cache):
         "checkpoint": str(path), "sha256": digest.hexdigest(), "config": raw,
         "metadata_origin": metadata_origin, "metadata_migrations": migrations,
         "task": source_config.task,
+        "radio_source": source_config.radio_source,
         "class_names": list(names), "legacy_key_mapping": migrated,
         "preprocessing": metadata.get("preprocessing", {
             "size": source_config.size, "mode": source_config.mode,

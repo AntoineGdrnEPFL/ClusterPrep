@@ -182,3 +182,19 @@ Les axes portent les noms des classes plutôt que des coordonnées décimales.
 Les PNG des diagnostics individuels et galeries commencent par le nom lisible du
 run. Un suffixe technique unique évite l’écrasement de deux exécutions portant le
 même nom ; les figures de comparaison collective gardent leur nom de synthèse.
+
+## Regrouper des folds entraînés avec des versions de code différentes
+
+Dans le notebook, `IGNORE_CODE_VERSION_ROOTS` contient par défaut uniquement
+`results/de_nde_radio_optical_xray_5folds`. Pour les runs sous ces racines,
+`analysis_ignore_code_version=True` exclut l'empreinte du code du calcul de
+`configuration_id`, en mémoire seulement. Les cinq folds de cette expérience
+forment ainsi une configuration, malgré leurs trois empreintes de code.
+Mettre la liste à `[]` rétablit le regroupement strict.
+
+Les hyperparamètres, modalités, seed et normalisation restent dans l'identité ;
+les contrôles de protocole restent actifs. Cette option autorise une analyse
+commune, sans affirmer que les versions du code sont équivalentes. Le registre
+et les exports conservent `original_configuration_id`, `library_source_sha256`
+et le drapeau `analysis_ignore_code_version`. Aucun artefact d'entraînement
+n'est réécrit.

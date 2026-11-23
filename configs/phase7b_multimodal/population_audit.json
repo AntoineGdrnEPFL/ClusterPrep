@@ -1,0 +1,69 @@
+{
+  "multimodal": {
+    "historical": 154,
+    "matched_resolution": 154,
+    "with_chandra": 65,
+    "without_chandra": 89,
+    "folds": [
+      {
+        "train": 112,
+        "validation": 29,
+        "test": 13
+      },
+      {
+        "train": 113,
+        "validation": 28,
+        "test": 13
+      },
+      {
+        "train": 113,
+        "validation": 28,
+        "test": 13
+      },
+      {
+        "train": 113,
+        "validation": 28,
+        "test": 13
+      },
+      {
+        "train": 113,
+        "validation": 28,
+        "test": 13
+      }
+    ]
+  },
+  "pair": {
+    "historical": 65,
+    "matched_resolution": 65,
+    "with_chandra": 65,
+    "without_chandra": 0,
+    "folds": [
+      {
+        "train": 42,
+        "validation": 10,
+        "test": 13
+      },
+      {
+        "train": 43,
+        "validation": 9,
+        "test": 13
+      },
+      {
+        "train": 41,
+        "validation": 11,
+        "test": 13
+      },
+      {
+        "train": 39,
+        "validation": 13,
+        "test": 13
+      },
+      {
+        "train": 43,
+        "validation": 9,
+        "test": 13
+      }
+    ]
+  },
+  "scope": "Same validated 154-cluster inventory; dataset construction checked for both radio products and both preprocessing modes. No FITS pixel loading during this count audit."
+}

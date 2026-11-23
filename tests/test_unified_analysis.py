@@ -135,6 +135,90 @@ def test_config_fold_aggregation_missing_folds_and_repetitions(make_run):
     assert a.aggregate_metrics(a.metrics_table([runs[0]])).empty
 
 
+def test_fitted_normalization_bounds_aggregate_without_losing_policy(make_run):
+    runs = [a.load_run(make_run(str(i), fold=i)) for i in range(3)]
+    for i, run in enumerate(runs):
+        run.config.update(
+            modalities=['radio', 'legacy'],
+            legacy={'normalization': {'scope': 'train', 'method': 'asinh_percentile',
+                                      'lower_percentile': 30, 'upper_percentile': 99}},
+            normalization_bounds={'legacy': [[.001 * (i + 1), .2 + .01 * i]]})
+    original = json.dumps([run.config for run in runs], sort_keys=True)
+    summary = a.aggregate_metrics(a.metrics_table(runs))
+    assert len(summary) == 1
+    assert summary.iloc[0].n_folds == 3
+    assert summary.iloc[0].n_runs == 3
+    assert json.dumps([run.config for run in runs], sort_keys=True) == original
+    runs[1].config['legacy']['normalization']['upper_percentile'] = 95
+    assert runs[0].configuration_id != runs[1].configuration_id
+    runs[2].config['modalities'] = ['radio']
+    assert runs[0].configuration_id != runs[2].configuration_id
+
+
+def test_matched_cohort_folds_aggregate_by_configuration(make_run):
+    runs = []
+    for experiment, modalities in [('A', ['radio', 'planck']),
+                                    ('C', ['radio', 'chandra', 'planck'])]:
+        for fold in range(5):
+            path = make_run(f'fold_{fold}/planck_{experiment}_historical_fold_{fold}')
+            metadata = json.loads((path/'config.json').read_text())
+            metadata['config']['name'] = path.name
+            metadata['config']['modalities'] = modalities
+            write(path/'config.json', metadata)
+            splits = json.loads((path/'splits.json').read_text())
+            splits['split_config'] = dict(fold=fold, provenance={
+                'cohort_manifest.json': 'shared-cohort', f'fold_{fold}.json': f'fold-hash-{fold}'})
+            write(path/'splits.json', splits)
+            run = a.load_run(path)
+            assert run.fold == fold
+            assert run.splits == splits
+            assert run.configuration_name == f'planck_{experiment}_historical'
+            # The legacy artifact does not declare the planned number of folds.
+            assert run.summary()['expected_folds'] is None
+            runs.append(run)
+    summary = a.aggregate_metrics(a.metrics_table(runs))
+    assert len(summary) == 2
+    assert summary.n_folds.tolist() == [5, 5]
+    assert summary.n_runs.tolist() == [5, 5]
+    assert summary.available_folds.tolist() == ['0,1,2,3,4'] * 2
+    runs[1].splits['split_config']['provenance']['cohort_manifest.json'] = 'other-cohort'
+    assert runs[0].configuration_id != runs[1].configuration_id
+    assert len(a.aggregate_metrics(a.metrics_table(runs))) == 3
+    runs[2].config['seed'] = 123
+    assert runs[0].configuration_id != runs[2].configuration_id
+
+
+def test_matched_fold_requires_manifest_provenance(make_run):
+    path = make_run('planck_A_historical_fold_0')
+    splits = json.loads((path/'splits.json').read_text())
+    splits['split_config'] = {'fold': 0, 'provenance': {'cohort_manifest.json': 'cohort'}}
+    write(path/'splits.json', splits)
+    run = a.load_run(path)
+    assert run.fold is None
+    assert run.configuration_name == path.name
+
+
+def test_explicit_configuration_group_preserves_provenance(make_run):
+    reference = a.load_run(make_run('reference', fold=0))
+    path = make_run('other', fold=1)
+    metadata = json.loads((path / 'config.json').read_text())
+    metadata['config']['include_masks'] = True
+    metadata['library_source_sha256'] = 'different-source'
+    write(path / 'config.json', metadata)
+    assert a.load_run(path).configuration_id != reference.configuration_id
+    metadata['analysis_configuration_id'] = reference.configuration_id
+    write(path / 'config.json', metadata)
+    other = a.load_run(path)
+    assert other.config['include_masks'] is True
+    assert other.metadata['library_source_sha256'] == 'different-source'
+    summary = a.aggregate_metrics(a.metrics_table([reference, other]))
+    assert len(summary) == 1
+    assert summary.iloc[0].n_folds == 2
+    other.metadata['analysis_configuration_id'] = 'invalid'
+    with pytest.raises(ValueError, match='analysis_configuration_id'):
+        _ = other.configuration_id
+
+
 def test_history_phases_variable_length(make_run):
     runs = [a.load_run(make_run(str(i), fold=i)) for i in [0,1]]
     runs[0].history = [dict(epoch=1, phase='frozen', phase_epoch=1, validation={'loss':2}),
@@ -339,3 +423,49 @@ def test_binary_diagnostics_single_target_percentages_and_named_export(make_run,
     multi = a.load_run(make_run('multi_diagnostics', task='rr_rh'))
     assert len(a.plot_diagnostics(multi).axes) == 11
     plt.close('all')
+
+
+def test_legacy_validation_flag_groups_comparable_zoom_runs(make_run):
+    from clusterprep.analysis.comparison import protocol_id
+    legacy = a.load_run(make_run('no_zoom', task='rr_rh', fold=0))
+    zoom = a.load_run(make_run('zoom', task='rr_rh', fold=0))
+    zoom.config['augmentation'] = {'zoom': {'enabled': True}}
+    zoom.splits['split_config']['use_val'] = True
+    assert legacy.configuration_id != zoom.configuration_id
+    assert protocol_id(legacy, 'test') == protocol_id(zoom, 'test')
+    assert 'use_val' not in legacy.splits['split_config']
+    a.assert_comparable([legacy, zoom])
+    figure = a.plot_performance(a.metrics_table([legacy, zoom]), kind='boxplot')
+    assert len(figure.axes) == 1
+    assert len(figure.axes[0].get_yticklabels()) == 2
+    plt.close(figure)
+    zoom.splits['split_config']['use_val'] = False
+    assert protocol_id(legacy, 'test') != protocol_id(zoom, 'test')
+    for run in (legacy, zoom):
+        run.splits['train'] += run.splits['validation']
+        run.splits['validation'] = []
+    assert protocol_id(legacy, 'test') == protocol_id(zoom, 'test')
+
+
+def test_ignore_code_version_is_opt_in_and_preserves_other_guards(make_run):
+    runs = [a.load_run(make_run(f'code-{i}', fold=i)) for i in range(3)]
+    for i, run in enumerate(runs):
+        run.metadata['library_source_sha256'] = f'source-{i}'
+    original = [run.configuration_id for run in runs]
+    provenance = json.dumps([run.metadata for run in runs], sort_keys=True)
+    assert len(set(original)) == 3
+    for run in runs:
+        run.analysis_ignore_code_version = True
+    assert len({run.configuration_id for run in runs}) == 1
+    assert a.aggregate_metrics(a.metrics_table(runs)).iloc[0].n_folds == 3
+    assert [run.original_configuration_id for run in runs] == original
+    assert json.dumps([run.metadata for run in runs], sort_keys=True) == provenance
+    registry = a.registry_table(runs)
+    assert registry.original_configuration_id.tolist() == original
+    assert registry.library_source_sha256.nunique() == 3
+    runs[1].config['learning_rate'] = .02
+    assert runs[1].configuration_id != runs[0].configuration_id
+    runs[2].splits['split_config']['split_seed'] = 123
+    assert len(a.aggregate_metrics(a.metrics_table(runs))) == 3
+    runs[0].analysis_ignore_code_version = False
+    assert runs[0].configuration_id == original[0]

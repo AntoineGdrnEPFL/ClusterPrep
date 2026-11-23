@@ -1,0 +1,507 @@
+{
+  "paired": {
+    "0": {
+      "status": "provisional_master_splits_only",
+      "train_keys": [
+        "PSZ2G023.17+86.71",
+        "PSZ2G031.93+78.71",
+        "PSZ2G046.88+56.48",
+        "PSZ2G049.32+44.37",
+        "PSZ2G050.46+67.54",
+        "PSZ2G053.53+59.52",
+        "PSZ2G055.59+31.85",
+        "PSZ2G057.61+34.93",
+        "PSZ2G057.78+52.32",
+        "PSZ2G057.92+27.64",
+        "PSZ2G060.55+27.00",
+        "PSZ2G065.28+44.53",
+        "PSZ2G066.41+27.03",
+        "PSZ2G066.68+68.44",
+        "PSZ2G077.90-26.63",
+        "PSZ2G080.16+57.65",
+        "PSZ2G080.41-33.24",
+        "PSZ2G080.64+64.31",
+        "PSZ2G092.69+59.92",
+        "PSZ2G099.86+58.45",
+        "PSZ2G100.45-38.42",
+        "PSZ2G106.61+66.71",
+        "PSZ2G107.10+65.32",
+        "PSZ2G111.75+70.37",
+        "PSZ2G113.91-37.01",
+        "PSZ2G114.79-33.71",
+        "PSZ2G150.56+58.32",
+        "PSZ2G160.83+81.66",
+        "PSZ2G163.87+48.54",
+        "PSZ2G164.65+46.37",
+        "PSZ2G165.46+66.15",
+        "PSZ2G166.09+43.38",
+        "PSZ2G172.63+35.15",
+        "PSZ2G176.27+37.54",
+        "PSZ2G179.09+60.12",
+        "PSZ2G181.06+48.47",
+        "PSZ2G184.68+28.91",
+        "PSZ2G186.37+37.26",
+        "PSZ2G186.99+38.65",
+        "PSZ2G189.31+59.24",
+        "PSZ2G205.90+73.76"
+      ],
+      "train_keys_sha256": "9e90990ea030950e5ce5d80b0da101c48411a66dc9b062c919d524f1db7383d6",
+      "options": {
+        "radio": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        },
+        "xray": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        }
+      },
+      "products": {
+        "RAW": {
+          "radio": [
+            [
+              -9.776114166015759e-05,
+              0.013425820134580206
+            ]
+          ],
+          "xray": [
+            [
+              -0.0015352924121543768,
+              0.07397028505802164
+            ]
+          ]
+        },
+        "T50kpcSUB": {
+          "radio": [
+            [
+              -7.857684977352619e-05,
+              0.0023749963380396513
+            ]
+          ],
+          "xray": [
+            [
+              -0.0015352924121543768,
+              0.07397028505802164
+            ]
+          ]
+        }
+      },
+      "frozen_for": [
+        "validation",
+        "test"
+      ],
+      "default_dataset_scope": "image",
+      "automatically_enabled_for_training": false,
+      "note": "Refit on the approved train subset if scientific coverage selection changes the cohort"
+    },
+    "1": {
+      "status": "provisional_master_splits_only",
+      "train_keys": [
+        "PSZ2G031.93+78.71",
+        "PSZ2G040.58+77.12",
+        "PSZ2G046.88+56.48",
+        "PSZ2G049.18+65.05",
+        "PSZ2G049.32+44.37",
+        "PSZ2G050.46+67.54",
+        "PSZ2G055.59+31.85",
+        "PSZ2G056.77+36.32",
+        "PSZ2G057.61+34.93",
+        "PSZ2G057.92+27.64",
+        "PSZ2G060.55+27.00",
+        "PSZ2G065.28+44.53",
+        "PSZ2G066.41+27.03",
+        "PSZ2G067.52+34.75",
+        "PSZ2G071.63+29.78",
+        "PSZ2G073.97-27.82",
+        "PSZ2G080.16+57.65",
+        "PSZ2G080.41-33.24",
+        "PSZ2G080.64+64.31",
+        "PSZ2G084.10+58.72",
+        "PSZ2G092.69+59.92",
+        "PSZ2G099.86+58.45",
+        "PSZ2G106.61+66.71",
+        "PSZ2G107.10+65.32",
+        "PSZ2G113.91-37.01",
+        "PSZ2G114.79-33.71",
+        "PSZ2G139.18+56.37",
+        "PSZ2G148.36+75.23",
+        "PSZ2G150.56+58.32",
+        "PSZ2G160.83+81.66",
+        "PSZ2G163.87+48.54",
+        "PSZ2G164.65+46.37",
+        "PSZ2G166.09+43.38",
+        "PSZ2G166.62+42.13",
+        "PSZ2G172.63+35.15",
+        "PSZ2G179.09+60.12",
+        "PSZ2G181.06+48.47",
+        "PSZ2G184.68+28.91",
+        "PSZ2G186.37+37.26",
+        "PSZ2G190.61+66.46",
+        "PSZ2G205.90+73.76"
+      ],
+      "train_keys_sha256": "5858c3535bcda51ce504bae1169028c4e30fecf9771669f78104fcc05d3d48ef",
+      "options": {
+        "radio": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        },
+        "xray": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        }
+      },
+      "products": {
+        "RAW": {
+          "radio": [
+            [
+              -8.671587274875491e-05,
+              0.0120483727380633
+            ]
+          ],
+          "xray": [
+            [
+              -0.0018710492993704974,
+              0.07077167309820653
+            ]
+          ]
+        },
+        "T50kpcSUB": {
+          "radio": [
+            [
+              -7.548781577497721e-05,
+              0.0022563307778909786
+            ]
+          ],
+          "xray": [
+            [
+              -0.0018710492993704974,
+              0.07077167309820653
+            ]
+          ]
+        }
+      },
+      "frozen_for": [
+        "validation",
+        "test"
+      ],
+      "default_dataset_scope": "image",
+      "automatically_enabled_for_training": false,
+      "note": "Refit on the approved train subset if scientific coverage selection changes the cohort"
+    },
+    "2": {
+      "status": "provisional_master_splits_only",
+      "train_keys": [
+        "PSZ2G023.17+86.71",
+        "PSZ2G031.93+78.71",
+        "PSZ2G040.58+77.12",
+        "PSZ2G046.88+56.48",
+        "PSZ2G049.18+65.05",
+        "PSZ2G050.46+67.54",
+        "PSZ2G053.53+59.52",
+        "PSZ2G056.77+36.32",
+        "PSZ2G057.78+52.32",
+        "PSZ2G057.92+27.64",
+        "PSZ2G060.55+27.00",
+        "PSZ2G066.41+27.03",
+        "PSZ2G066.68+68.44",
+        "PSZ2G067.52+34.75",
+        "PSZ2G071.63+29.78",
+        "PSZ2G073.97-27.82",
+        "PSZ2G077.90-26.63",
+        "PSZ2G080.16+57.65",
+        "PSZ2G080.64+64.31",
+        "PSZ2G084.10+58.72",
+        "PSZ2G092.69+59.92",
+        "PSZ2G100.45-38.42",
+        "PSZ2G106.61+66.71",
+        "PSZ2G111.75+70.37",
+        "PSZ2G113.91-37.01",
+        "PSZ2G139.18+56.37",
+        "PSZ2G148.36+75.23",
+        "PSZ2G150.56+58.32",
+        "PSZ2G160.83+81.66",
+        "PSZ2G163.87+48.54",
+        "PSZ2G164.65+46.37",
+        "PSZ2G165.46+66.15",
+        "PSZ2G166.09+43.38",
+        "PSZ2G166.62+42.13",
+        "PSZ2G172.63+35.15",
+        "PSZ2G176.27+37.54",
+        "PSZ2G181.06+48.47",
+        "PSZ2G186.37+37.26",
+        "PSZ2G186.99+38.65",
+        "PSZ2G189.31+59.24",
+        "PSZ2G190.61+66.46",
+        "PSZ2G205.90+73.76"
+      ],
+      "train_keys_sha256": "c91b4dd848566981b158fc035abde9c8e720847a92f70a76963f4f72e72fff45",
+      "options": {
+        "radio": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        },
+        "xray": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        }
+      },
+      "products": {
+        "RAW": {
+          "radio": [
+            [
+              -8.313289436046035e-05,
+              0.01153540778905151
+            ]
+          ],
+          "xray": [
+            [
+              -0.001847159001044929,
+              0.06872149646282198
+            ]
+          ]
+        },
+        "T50kpcSUB": {
+          "radio": [
+            [
+              -6.9537345552817e-05,
+              0.002250710353255246
+            ]
+          ],
+          "xray": [
+            [
+              -0.001847159001044929,
+              0.06872149646282198
+            ]
+          ]
+        }
+      },
+      "frozen_for": [
+        "validation",
+        "test"
+      ],
+      "default_dataset_scope": "image",
+      "automatically_enabled_for_training": false,
+      "note": "Refit on the approved train subset if scientific coverage selection changes the cohort"
+    },
+    "3": {
+      "status": "provisional_master_splits_only",
+      "train_keys": [
+        "PSZ2G023.17+86.71",
+        "PSZ2G040.58+77.12",
+        "PSZ2G046.88+56.48",
+        "PSZ2G049.18+65.05",
+        "PSZ2G049.32+44.37",
+        "PSZ2G050.46+67.54",
+        "PSZ2G053.53+59.52",
+        "PSZ2G055.59+31.85",
+        "PSZ2G056.77+36.32",
+        "PSZ2G057.61+34.93",
+        "PSZ2G057.78+52.32",
+        "PSZ2G060.55+27.00",
+        "PSZ2G065.28+44.53",
+        "PSZ2G066.41+27.03",
+        "PSZ2G066.68+68.44",
+        "PSZ2G067.52+34.75",
+        "PSZ2G071.63+29.78",
+        "PSZ2G073.97-27.82",
+        "PSZ2G077.90-26.63",
+        "PSZ2G080.16+57.65",
+        "PSZ2G080.41-33.24",
+        "PSZ2G080.64+64.31",
+        "PSZ2G084.10+58.72",
+        "PSZ2G099.86+58.45",
+        "PSZ2G100.45-38.42",
+        "PSZ2G107.10+65.32",
+        "PSZ2G111.75+70.37",
+        "PSZ2G114.79-33.71",
+        "PSZ2G139.18+56.37",
+        "PSZ2G148.36+75.23",
+        "PSZ2G150.56+58.32",
+        "PSZ2G164.65+46.37",
+        "PSZ2G165.46+66.15",
+        "PSZ2G166.62+42.13",
+        "PSZ2G172.63+35.15",
+        "PSZ2G176.27+37.54",
+        "PSZ2G179.09+60.12",
+        "PSZ2G184.68+28.91",
+        "PSZ2G186.99+38.65",
+        "PSZ2G189.31+59.24",
+        "PSZ2G190.61+66.46",
+        "PSZ2G205.90+73.76"
+      ],
+      "train_keys_sha256": "177cda4335b08693b9b62dc52762f54781569cf6f54624362530565e7e9abc1b",
+      "options": {
+        "radio": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        },
+        "xray": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        }
+      },
+      "products": {
+        "RAW": {
+          "radio": [
+            [
+              -8.98932499694638e-05,
+              0.012989052645862106
+            ]
+          ],
+          "xray": [
+            [
+              -0.0018128444906324148,
+              0.0745923088490965
+            ]
+          ]
+        },
+        "T50kpcSUB": {
+          "radio": [
+            [
+              -7.922312943264852e-05,
+              0.0025292062666267185
+            ]
+          ],
+          "xray": [
+            [
+              -0.0018128444906324148,
+              0.0745923088490965
+            ]
+          ]
+        }
+      },
+      "frozen_for": [
+        "validation",
+        "test"
+      ],
+      "default_dataset_scope": "image",
+      "automatically_enabled_for_training": false,
+      "note": "Refit on the approved train subset if scientific coverage selection changes the cohort"
+    },
+    "4": {
+      "status": "provisional_master_splits_only",
+      "train_keys": [
+        "PSZ2G023.17+86.71",
+        "PSZ2G031.93+78.71",
+        "PSZ2G040.58+77.12",
+        "PSZ2G049.18+65.05",
+        "PSZ2G049.32+44.37",
+        "PSZ2G053.53+59.52",
+        "PSZ2G055.59+31.85",
+        "PSZ2G056.77+36.32",
+        "PSZ2G057.61+34.93",
+        "PSZ2G057.78+52.32",
+        "PSZ2G057.92+27.64",
+        "PSZ2G065.28+44.53",
+        "PSZ2G066.68+68.44",
+        "PSZ2G067.52+34.75",
+        "PSZ2G071.63+29.78",
+        "PSZ2G073.97-27.82",
+        "PSZ2G077.90-26.63",
+        "PSZ2G080.41-33.24",
+        "PSZ2G084.10+58.72",
+        "PSZ2G092.69+59.92",
+        "PSZ2G099.86+58.45",
+        "PSZ2G100.45-38.42",
+        "PSZ2G106.61+66.71",
+        "PSZ2G107.10+65.32",
+        "PSZ2G111.75+70.37",
+        "PSZ2G113.91-37.01",
+        "PSZ2G114.79-33.71",
+        "PSZ2G139.18+56.37",
+        "PSZ2G148.36+75.23",
+        "PSZ2G160.83+81.66",
+        "PSZ2G163.87+48.54",
+        "PSZ2G165.46+66.15",
+        "PSZ2G166.09+43.38",
+        "PSZ2G166.62+42.13",
+        "PSZ2G176.27+37.54",
+        "PSZ2G179.09+60.12",
+        "PSZ2G181.06+48.47",
+        "PSZ2G184.68+28.91",
+        "PSZ2G186.37+37.26",
+        "PSZ2G186.99+38.65",
+        "PSZ2G189.31+59.24",
+        "PSZ2G190.61+66.46"
+      ],
+      "train_keys_sha256": "78d0b8582e05ca343480d6a1b95a1a21e9af95abc0543f4be4fe48d1c61344d1",
+      "options": {
+        "radio": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        },
+        "xray": {
+          "scope": "train",
+          "method": "asinh_percentile",
+          "lower_percentile": 30,
+          "upper_percentile": 99,
+          "alpha": 10.0
+        }
+      },
+      "products": {
+        "RAW": {
+          "radio": [
+            [
+              -9.107958976528607e-05,
+              0.013274868763983212
+            ]
+          ],
+          "xray": [
+            [
+              -0.0014851451618596912,
+              0.0745364624261856
+            ]
+          ]
+        },
+        "T50kpcSUB": {
+          "radio": [
+            [
+              -7.510060822824016e-05,
+              0.0027381419669836437
+            ]
+          ],
+          "xray": [
+            [
+              -0.0014851451618596912,
+              0.0745364624261856
+            ]
+          ]
+        }
+      },
+      "frozen_for": [
+        "validation",
+        "test"
+      ],
+      "default_dataset_scope": "image",
+      "automatically_enabled_for_training": false,
+      "note": "Refit on the approved train subset if scientific coverage selection changes the cohort"
+    }
+  }
+}

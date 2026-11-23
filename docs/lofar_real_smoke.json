@@ -1,0 +1,71 @@
+{
+  "description": "One epoch CPU, 12 real common clusters, identical splits; not a scientific performance estimate",
+  "splits": {
+    "train": [
+      "PSZ2G023.17+86.71.fits",
+      "PSZ2G031.93+78.71.fits",
+      "PSZ2G040.58+77.12.fits",
+      "PSZ2G045.13+67.78.fits",
+      "PSZ2G048.75+53.18.fits",
+      "PSZ2G049.18+65.05.fits"
+    ],
+    "validation": [
+      "PSZ2G045.87+57.70.fits",
+      "PSZ2G050.46+67.54.fits"
+    ],
+    "test": [
+      "PSZ2G046.88+56.48.fits",
+      "PSZ2G048.10+57.16.fits",
+      "PSZ2G054.85+54.30.fits",
+      "PSZ2G055.80+32.90.fits"
+    ]
+  },
+  "runs": [
+    "/Users/antoinegdrn/PH_Project_I/results/lofar_tapered_smoke/real_radio_smoke-20261108T114246-eef92334",
+    "/Users/antoinegdrn/PH_Project_I/results/lofar_tapered_smoke/real_radio_smoke-20261108T114247-77c2df4e"
+  ],
+  "comparison": [
+    {
+      "run_id": "real_radio_smoke-20261108T114246-eef92334",
+      "name": "real_radio_smoke",
+      "mode": "raw",
+      "radio_source": "RAW",
+      "model": "cnn",
+      "modalities": "",
+      "seed": 42,
+      "best_epoch": 1,
+      "seconds": 0.7251247079111636,
+      "cohort": "all",
+      "cohort_id": "68609a9d6803937be49850743fd49217b1e1637d06d625ec869bcece59d46166",
+      "n_samples": 4,
+      "accuracy": 0.5,
+      "balanced_accuracy": 0.5,
+      "macro_f1": 0.3333333333333333,
+      "weighted_f1": 0.3333333333333333,
+      "roc_auc_macro": 0.0,
+      "average_precision_macro": 0.41666666666666663,
+      "loss": 0.7177233844995499
+    },
+    {
+      "run_id": "real_radio_smoke-20261108T114247-77c2df4e",
+      "name": "real_radio_smoke",
+      "mode": "raw",
+      "radio_source": "T25kpc",
+      "model": "cnn",
+      "modalities": "",
+      "seed": 42,
+      "best_epoch": 1,
+      "seconds": 0.42846470803488046,
+      "cohort": "all",
+      "cohort_id": "68609a9d6803937be49850743fd49217b1e1637d06d625ec869bcece59d46166",
+      "n_samples": 4,
+      "accuracy": 0.5,
+      "balanced_accuracy": 0.5,
+      "macro_f1": 0.3333333333333333,
+      "weighted_f1": 0.3333333333333333,
+      "roc_auc_macro": 0.0,
+      "average_precision_macro": 0.41666666666666663,
+      "loss": 0.7179252356290817
+    }
+  ]
+}

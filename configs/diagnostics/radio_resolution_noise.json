@@ -1,0 +1,9 @@
+{
+  "validation_dir": "outputs/common_wcs_validation",
+  "output_dir": "outputs/radio_resolution_diagnostic",
+  "cluster_ids": null,
+  "coverage_threshold": 0.8,
+  "coverage_difference_threshold": 0.1,
+  "dpi": 180,
+  "overwrite": false
+}

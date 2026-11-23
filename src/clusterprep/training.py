@@ -42,6 +42,7 @@ from .training_core import (
     mixup_batch,
     move_batch_to_device,
     forward_model,
+    compile_training_model,
 )
 from .transfer import (
     TransferConfig,
@@ -88,9 +89,43 @@ class ExperimentConfig(TrainingConfig):
     min_delta: float = 0.0
     class_weight: str = "balanced"
     model_params: dict = field(default_factory=dict)
+    modalities: list | None = None
+    missing_modality_policy: str = "optional"
+    legacy: dict = field(default_factory=dict)
+    include_masks: bool = True
+    normalization: dict = field(default_factory=dict)
+    normalization_bounds: dict = field(default_factory=dict)
+    radio_source: str = "RAW"
+    missing_radio_policy: str = "error"
+    radio_preprocessing: str = "historical"
+    matched_resolution: dict | None = None
+    matched_records: dict | None = None
+    matched_cache_dir: str | None = None
+    evaluate_test: bool = True
+    planck: dict = field(default_factory=dict)
 
     def __post_init__(self):
         super().__post_init__()
+        if not isinstance(self.evaluate_test, bool):
+            raise ValueError("evaluate_test must be boolean")
+        if self.radio_preprocessing not in {"historical", "matched_resolution"}:
+            raise ValueError("Unknown radio_preprocessing")
+        if self.radio_preprocessing == "matched_resolution":
+            from .matched_dataset import MatchedResolutionConfig
+            MatchedResolutionConfig.parse(self.matched_resolution)
+            if (self.modalities != ["radio", "xray"] and
+                    (not self.modalities or 'planck' not in self.modalities or
+                     'radio' not in self.modalities or set(self.modalities) - {'radio', 'xray', 'planck'})):
+                raise ValueError("Matched training requires explicit radio/xray or radio/planck modalities")
+        from .planck import validate_planck, normalization_options
+        validate_planck(self.planck, self.modalities)
+        object.__setattr__(self, 'normalization', normalization_options(self.normalization, self.modalities))
+        from .io import validate_radio_source
+        validate_radio_source(self.radio_source)
+        if self.missing_radio_policy != "error":
+            raise ValueError("missing_radio_policy: seule 'error' est supportée")
+        from .modalities import validate_modalities
+        validate_modalities(self.modalities, self.missing_modality_policy, self.legacy, self.include_masks)
         from .radio_noise import validate_radio_noise
         if not isinstance(self.augmentation, dict) or set(self.augmentation) - {"radio_noise", "zoom"}:
             raise ValueError("augmentation: seules les clés radio_noise et zoom sont acceptées")
@@ -254,6 +289,8 @@ def _validate_splits(
 
 
 def _inputs(batch, mode, model=None):
+    if "image" in batch:
+        return batch["image"]
     names = ("raw",) if mode == "raw" else ("raw", "chandra", "chandra_mask")
     x = torch.cat([batch[name] for name in names], dim=1)
     if model is not None and getattr(
@@ -276,7 +313,8 @@ def compute_task_counts(
     targets = [task_target(data_info[k], task, candidate_policy)[0] for k in train_keys]
     if task in BINARY_TASKS:
         return [sum(t == i for t in targets) for i in range(2)]
-    return np.asarray(targets).sum(axis=0).tolist()
+    masks = [task_target(data_info[k], task, candidate_policy)[1] for k in train_keys]
+    return (np.asarray(targets) * np.asarray(masks)).sum(axis=0).tolist()
 
 
 def _epoch(
@@ -292,6 +330,7 @@ def _epoch(
     scheduler=None,
     input_adapter=None,
     frozen_modules=(),
+    training_model=None,
 ):
     training = optimizer is not None
     model.train(training)
@@ -354,7 +393,9 @@ def _epoch(
                     inputs, target_a, target_b, lam = mixup_batch(
                         inputs, target, config.mixup_alpha
                     )
-            logits = forward_model(model, inputs)
+            logits = forward_model(
+                training_model if training and training_model is not None else model, inputs
+            )
             if (
                 logits.shape != (len(target), len(class_names))
                 or not torch.isfinite(logits).all()
@@ -377,11 +418,10 @@ def _epoch(
                     raise ValueError("Targets binaires finis requis")
             # CE simple conservée séparément pour les comparaisons de cohortes.
             if getattr(config, "task", "de_nde") in BINARY_TASKS:
-                losses = nn.functional.cross_entropy(
-                    logits,
-                    target,
-                    reduction="none",
-                )
+                if not training:
+                    losses = nn.functional.cross_entropy(
+                        logits, target, reduction="none"
+                    )
                 if mixed:
                     loss = lam * criterion(logits, target_a) + (1 - lam) * criterion(
                         logits, target_b
@@ -392,10 +432,11 @@ def _epoch(
                 mask = batch.get("label_mask", torch.ones_like(target))
                 if mask.shape != target.shape or not ((mask == 0) | (mask == 1)).all():
                     raise ValueError("Masque de labels binaire [B, 2] requis")
-                elements = nn.functional.binary_cross_entropy_with_logits(
-                    logits, target, reduction="none"
-                )
-                losses = (elements * mask).sum(1) / mask.sum(1).clamp_min(1)
+                if not training:
+                    elements = nn.functional.binary_cross_entropy_with_logits(
+                        logits, target, reduction="none"
+                    )
+                    losses = (elements * mask).sum(1) / mask.sum(1).clamp_min(1)
 
                 def masked_loss(y, m):
                     values = nn.functional.binary_cross_entropy_with_logits(
@@ -587,6 +628,15 @@ class Trainer:
         n_train=None,
     ):
         self.model = model.to(device)
+        # Keep model identity and checkpoint keys independent of OptimizedModule.
+        # Build once per Trainer, never once per epoch or batch.
+        self.training_model = compile_training_model(self.model, config, device)
+        if self.training_model is not self.model:
+            message(
+                f"torch.compile activé : {config.compile_backend}, {config.compile_mode}, "
+                f"dynamic={config.compile_dynamic}. Les premiers lots incluent la compilation.",
+                getattr(config, "verbose", False),
+            )
         self.config, self.class_names, self.device = config, tuple(class_names), device
         self.input_adapter = input_adapter
         self.criterion = build_criterion(config, class_counts, device, n_train=n_train)
@@ -628,6 +678,7 @@ class Trainer:
             input_adapter=self.input_adapter,
             description=description,
             frozen_modules=self.frozen_modules,
+            training_model=self.training_model,
         )
 
     def evaluate(self, loader, description=None):
@@ -1057,7 +1108,14 @@ def run_experiment(
     """
     if not isinstance(use_val, bool):
         raise ValueError("use_val doit être booléen")
-    data_info = merge_cluster_labels(data_info)
+    from .io import select_radio_source
+    data_info = select_radio_source(merge_cluster_labels(data_info), config.radio_source,
+                                    config.missing_radio_policy)
+    message(f"Produit radio : {config.radio_source}", config.verbose)
+    if config.modalities is not None:
+        from .io import discover_legacy
+        data_info = discover_legacy(data_info, config.legacy.get("raw_root"),
+                                   config.legacy.get("filename_pattern", "{cluster_id}_legacy.fits"))
     class_names = ("RR", "RH") if config.task == "rr_rh" else tuple(class_names)
     if config.task == "de_nde" and set(class_names) != {"DE", "NDE"}:
         class_names = CLASS_NAMES
@@ -1082,7 +1140,7 @@ def run_experiment(
     if splits is None:
         splits = split_data_keys(
             data_info,
-            mode=(config.mode if config.task == "rr_rh" else "raw"),
+            mode=(config.mode if config.task == "rr_rh" and "planck" not in (config.modalities or []) else "raw"),
             task=config.task,
             candidate_policy=config.candidate_policy,
             seed=config.seed,
@@ -1134,10 +1192,14 @@ def run_experiment(
         transfer_splits_report = {"sources": audits,
                                   "independent_evaluation": all(a["independent_evaluation"] for a in audits.values())}
     base_splits = splits
+    if config.modalities is not None and config.missing_modality_policy == "required":
+        from .modalities import PATHS, required_modalities
+        required = required_modalities(config.modalities, config.mode)
+        splits = tuple([k for k in keys if all(data_info[k].get(PATHS[m]) for m in required)]
+                       for keys in splits)
     if config.mode == "pair":
-        splits = tuple(
-            [k for k in keys if data_info[k].get("chandra_path")] for keys in splits
-        )
+        from .modalities import mode_keys
+        splits = tuple(mode_keys(data_info, keys, config.mode, config.modalities) for keys in splits)
     _validate_splits(
         data_info, splits, class_names, config.task, config.candidate_policy,
         allow_empty_validation=not has_validation,
@@ -1207,12 +1269,44 @@ def _run(
     transfer_splits_report=None,
     cv_execution=None,
 ):
+    # Exclude reserved test observations from every data preparation operation.
+    reserved_test = list(splits[2]) if not config.evaluate_test else []
+    if not config.evaluate_test:
+        splits = (splits[0], splits[1], [])
+        base_splits = (base_splits[0], base_splits[1], [])
+        active = set(splits[0] + splits[1])
+        info = {k: v for k, v in info.items() if k in active}
+    dataset_options = dict(planck=config.planck, radio_preprocessing=config.radio_preprocessing,
+                           matched_resolution=config.matched_resolution,
+                           matched_records=config.matched_records,
+                           matched_cache_dir=config.matched_cache_dir)
+    from .io import radio_coverage
+    _json(run_dir / "radio_coverage.json", {"radio_source": config.radio_source,
+                                           "products": radio_coverage(info), "excluded": []})
     started = time.perf_counter()
     random.seed(config.seed)
     np.random.seed(config.seed)
     torch.manual_seed(config.seed)
     device = torch.device(config.device)
 
+    if config.modalities is not None:
+        from .modalities import fit_normalization
+        fitting = ClusterDataset(info, splits[0], class_names, mode=config.mode, size=config.size,
+                                 task=config.task, candidate_policy=config.candidate_policy,
+                                 processed_dir=config.processed_dir, modalities=config.modalities,
+                                 legacy=config.legacy, include_masks=config.include_masks,
+                                 normalization=config.normalization,
+                                 missing_modality_policy=config.missing_modality_policy, **dataset_options)
+        # Refit per fold; never reuse another fold's bounds during training.
+        bounds = fit_normalization(fitting)
+        config = replace(config, normalization_bounds=bounds)
+        _json(run_dir / "normalization.json", {"train_keys": list(splits[0]), "bounds": bounds,
+                                              "radio_source": config.radio_source,
+                                              "normalization": config.normalization,
+                                              "legacy": config.legacy.get("normalization", {})})
+        _json(run_dir / "modality_exclusions.json", {
+            name: [k for k in base if k not in set(used)]
+            for name, base, used in zip(("train", "validation", "test"), base_splits, splits)})
     output_names = tuple(class_names)
     model = factory(
         config,
@@ -1222,6 +1316,7 @@ def _run(
     if isinstance(config.transfer, ModularTransferConfig) and config.transfer.enabled:
         try:
             transfer_report = initialize_transfer(model, config.transfer, factory)
+            transfer_report["target_radio_source"] = config.radio_source
         except TransferError as error:
             _json(run_dir / "transfer.json", error.report)
             raise
@@ -1263,7 +1358,7 @@ def _run(
         config.verbose,
     )
     preparation = None
-    if config.processed_dir is not None:
+    if config.processed_dir is not None and config.modalities is None:
         preparation = prepare_processed(
             info,
             [k for keys in splits for k in keys],
@@ -1314,6 +1409,12 @@ def _run(
             keys,
             class_names,
             mode=config.mode,
+            modalities=config.modalities,
+            missing_modality_policy=config.missing_modality_policy,
+            legacy=config.legacy,
+            include_masks=config.include_masks,
+            normalization=config.normalization,
+            normalization_bounds=config.normalization_bounds,
             size=config.size,
             augment=config.augment and i == 0,
             zoom=zoom,
@@ -1325,6 +1426,7 @@ def _run(
             scattering_params=scattering_params,
             task=config.task,
             candidate_policy=config.candidate_policy,
+            **dataset_options,
         )
         for i, keys in enumerate(splits)
     ]
@@ -1353,6 +1455,7 @@ def _run(
                 worker_init_fn=_seed_worker,
                 generator=generator,
                 persistent_workers=config.num_workers > 0,
+                pin_memory=torch.device(device).type == "cuda",
             )
         )
     trainer = Trainer(
@@ -1410,6 +1513,9 @@ def _run(
     split_manifest = {
         name: keys for name, keys in zip(("train", "validation", "test"), splits)
     }
+    if not config.evaluate_test:
+        split_manifest["reserved_external_test"] = reserved_test
+        split_manifest["test_evaluated"] = False
     if split_metadata is not None:
         split_manifest["split_config"] = split_metadata
     split_manifest["base_splits"] = dict(
@@ -1431,6 +1537,17 @@ def _run(
     }
     sources = {k: _source_signature(info[k]) for keys in base_splits for k in keys}
     split_manifest["source_signatures"] = sources
+    from .processed import _identity
+    split_manifest["radio_source"] = config.radio_source
+    split_manifest["active_radio_signatures"] = {
+        k: _identity(info[k], "raw", config.size) for keys in base_splits for k in keys}
+    if config.modalities is not None:
+        split_manifest["optical_source_signatures"] = {
+            k: ({"path": str(Path(info[k]["legacy_path"]).resolve()),
+                 "bytes": Path(info[k]["legacy_path"]).stat().st_size,
+                 "mtime_ns": Path(info[k]["legacy_path"]).stat().st_mtime_ns}
+                if info[k].get("legacy_path") else None)
+            for keys in base_splits for k in keys}
     _json(run_dir / "splits.json", split_manifest)
     _json(
         run_dir / "split_distribution.json",
@@ -1543,6 +1660,23 @@ def _run(
         checkpoint = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
         trainer.model.load_state_dict(checkpoint["model_state_dict"])
         del checkpoint
+    if not config.evaluate_test:
+        _write_predictions(run_dir / "validation_predictions.csv", val_predictions,
+                           output_names, task=config.task)
+        _json(run_dir / "validation_predictions.json", val_predictions)
+        _json(run_dir / "validation_metrics.json", val_metrics)
+        _json(run_dir / "metrics.json", dict(
+            schema_version=2, run_id=run_dir.name, config=asdict(config),
+            class_names=list(class_names), best_epoch=best_epoch,
+            epochs_ran=len(history), stopped_early=stopped,
+            seconds=time.perf_counter()-started, validation=val_metrics,
+            test=None, test_cohorts={}, test_evaluated=False,
+            threshold_selection=threshold_selection,
+            annotation_convention="rr_rh_known_mask_when_present",
+            split_counts=dict(train=len(splits[0]), validation=len(splits[1]),
+                              test=0, reserved_test=len(reserved_test))))
+        _json(run_dir / "status.json", {"status": "completed", "test_evaluated": False})
+        return run_dir
     test_metrics, test_predictions = trainer.evaluate(
         loaders[2], description="Test final"
     )
@@ -1781,7 +1915,9 @@ def compare_experiments(run_dirs, output_path=None, cohort="paired"):
             "run_id": result["run_id"],
             "name": result["config"]["name"],
             "mode": result["config"]["mode"],
+            "radio_source": result["config"].get("radio_source", "RAW"),
             "model": result["config"]["model"],
+            "modalities": "+".join(result["config"].get("modalities") or []),
             "seed": result["config"]["seed"],
             "best_epoch": result["best_epoch"],
             "seconds": result["seconds"],

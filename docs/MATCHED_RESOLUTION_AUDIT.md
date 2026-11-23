@@ -1,0 +1,26 @@
+# Audit préalable — phases 1 à 3
+
+## Chemin actif et risques
+
+- `src/clusterprep/io.py` : `get_data_info_dict`, `discover_radio_products`, `resolve_radio_path` choisissent RAW/T50kpcSUB ; `load_celestial_fits` sélectionne le HDU céleste et `read_fits_with_wcs` charge CHANDRA. Le lecteur générique peut sélectionner le premier plan d'un cube : le nouveau lecteur doit refuser les cubes non singleton.
+- `src/clusterprep/preprocessing.py` : `preprocess` calcule le plus grand facteur puissance de deux compatible avec 128 pixels, `centered_raw_window` coupe au centre, `block_average` moyenne les pixels finis. La grille dépend du produit radio ; le champ 4R500 n'est pas garanti. CHANDRA est interpolé sur la fenêtre radio avant block averaging. Son masque est la finitude après réduction, sans seuil de support.
+- `src/clusterprep/common_wcs_validation.py` : `physical_field` définit le **côté** comme 4R500 (Planck18, R500 ou dérivation M500) ; `common_grid` utilise le centre catalogue, nord en haut, est à gauche et TAN. `project_plane` réalise une interpolation bilinéaire sans matching. Réutiliser la convention physique ; ne pas utiliser implicitement le fallback médian du catalogue pour le nouveau traitement.
+- `src/clusterprep/dataset.py` : `ClusterDataset.__getitem__` et `_modality_images` consomment le prétraitement/cache, puis normalisent et augmentent. Modes raw/pair/multimodal, modalités explicites et scattering. L'intégration relève de la phase 4.
+- `src/clusterprep/processed.py` : cache FITS atomique version 2, identité sources/taille/mode/produit. Ni le partenaire radio ni le beam cible n'entrent dans la clé. Ne pas réutiliser ce cache pour les images harmonisées.
+- `src/clusterprep/preprocessing.py::normalize` : P30/P99 et asinh(alpha=10), par image par défaut ; pixels invalides mis à zéro après masquage. `modalities.fit_normalization` calcule des bornes globales uniquement sur les clés fournies ; `training._run` lui fournit le train avant augmentations. Aucun de ces calculs ne sera appelé en phases 2–3.
+- `src/clusterprep/splits.py` : `split_data_keys`, stratification multilabel ; `training.py` valide les groupes, écrit `splits.json` avec sources/labels et `config.json`. Runs sous output_dir/run_id, checkpoint `best.pt`, métadonnées et empreintes du code. Les variantes sont indexées sous le même amas dans le dataset.
+- `src/clusterprep/transfer.py`, `modular_transfer.py`, `experiment_loader.py` : initialisation par modules, gel/dégel et audit/réutilisation des splits source ; `training.py` exporte provenance et rapports. La compatibilité de forme des poids ne garantit pas celle du prétraitement radio. Préentraînement et test RR/RH devront être réaudités en phase 5.
+- `src/clusterprep/multilabel_analysis.py` : lecture config/metrics/splits et vérification des clés ; `classification_gallery_rows`, `plot_classification_gallery`, `plot_testset_label_galleries` existent. Aucun changement d'évaluation à ce stade.
+- Ancien pipeline `../dcreclass/src/dcreclass/data/loaders.py` : `load_PSZ2`, `apply_formatting` (crop puis resize bilinéaire), normalisation et cache dans `load_galaxies`. `data/processing.py::process_images_for_scale` prépare RAW/T/SUB avec champs par version ; `utils/fits.py::kernel_from_beams` écrête les valeurs propres négatives. Ses conventions BPA et matrice PC ne conviennent pas comme référence au nouveau calcul est/nord. Ne pas modifier ces routines historiques.
+
+- Configurations : `configs/de_nde_raw_t50kpcsub_chandra_5folds/fold_*.json` compare déjà les deux produits en DE/NDE, taille 128, encodeur double CNN, MPS et normalisation par image ; CHANDRA y reste optionnel. Cette configuration ne définit donc pas la future cohorte RR/RH appariée avec CHANDRA exploitable. Les configurations racine `../configs/training_config.json` et `../configs/entrainement.json` restent inchangées.
+
+## Plan avant implémentation
+
+1. Ajouter `src/clusterprep/radio_psf.py` : lecture stricte, beam en covariance est/nord (BPA nord vers est), Jacobienne céleste locale avec contrôle de variation spatiale, cible circulaire commune, soustraction PSD explicite, convolution à support contrôlé en Jy/sr, retour optionnel Jy/beam cible.
+2. Ajouter `src/clusterprep/matched_resolution.py` : grille physique commune 128², convolution native avant reprojection, masques séparés et intersection, CHANDRA unique, conversion explicite en tenseurs float32 sans normalisation. Pas de branche nouvelle dans le dataset.
+3. Ajouter tests indépendants et exemple exportant les images/masques/métadonnées dans un répertoire distinct. Vérifier photométrie, PSF mesurée, rotation/anisotropie, couverture, reproductibilité et tests historiques pertinents.
+
+## Choix scientifiques explicites
+
+3 pixels/FWHM est un paramètre ; à ce seuil la réponse gaussienne en amplitude à Nyquist est environ 3.3e-4. La PSF est nominale avant interpolation ; discrétisation et interpolation doivent être mesurées et tolérées numériquement, pas présentées comme une égalité analytique exacte. Sans observations aux bords, aucune conservation globale du flux n'est promise. Le masque conservera les trous natifs et rejettera le faible support. Pas de normalisation, labels, splits, caches historiques ou entraînements modifiés.

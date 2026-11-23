@@ -71,3 +71,17 @@ class ConfigWizardTests(unittest.TestCase):
         config = json.loads(self.path.read_text())["experiments"][0]
         self.assertEqual(config["model"], "image_cnn")
         self.assertEqual(config["model_params"]["hidden_dim"], 12)
+
+    def test_compile_options(self):
+        replies = {
+            'Compilation du modèle': 'oui',
+            'Backend torch.compile': 'aot_eager',
+            'Formes dynamiques': 'true',
+        }
+        def read(prompt):
+            return next((answer for prefix, answer in replies.items() if prompt.startswith(prefix)), '')
+        create_config(self.path, input_fn=read, print_fn=self.messages.append)
+        config = ExperimentConfig(**json.loads(self.path.read_text())['experiments'][0])
+        self.assertIs(config.use_compile, True)
+        self.assertEqual(config.compile_backend, 'aot_eager')
+        self.assertIs(config.compile_dynamic, True)

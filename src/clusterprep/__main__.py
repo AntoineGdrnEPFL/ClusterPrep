@@ -5,7 +5,21 @@ from dataclasses import replace
 import json
 import sys
 from pathlib import Path
-from .io import get_data_info_dict, CLASS_NAMES
+from .io import get_data_info_dict, CLASS_NAMES, radio_coverage
+
+
+def _map_data_classes(info, mapping):
+    """Apply an explicit suite-level mapping, preserving source annotations."""
+    from .labels import labels_for
+    for item in info.values():
+        original = labels_for(item)
+        mapped = {mapping[label] for label in original}
+        labels_for({"labels": mapped})  # Reject contradictory DE/NDE labels.
+        item["source_labels"] = sorted(original)
+        item["labels"] = mapped
+        if "class" in item:
+            item["class"] = mapping[item["class"]]
+    return info
 
 
 def preprocessing_main(argv):
@@ -20,6 +34,10 @@ def preprocessing_main(argv):
         "--mode", choices=("raw", "pair", "multimodal"), default="multimodal"
     )
     parser.add_argument("--size", type=int, default=128)
+    parser.add_argument("--radio-source", default="RAW")
+    parser.add_argument("--legacy-root", type=Path)
+    parser.add_argument("--legacy-only", action="store_true", help="Prepare only optical products")
+    parser.add_argument("--legacy-bands", nargs="+", default=["g", "r", "z"])
     parser.add_argument("--class-names", nargs="+", default=list(CLASS_NAMES))
     parser.add_argument(
         "--force", action="store_true", help="Recalculer même les FITS valides"
@@ -28,7 +46,28 @@ def preprocessing_main(argv):
     args = parser.parse_args(argv)
     if args.size < 1:
         parser.error("--size doit être positif")
+    from .io import select_radio_source
     info = get_data_info_dict(args.data_dir, args.class_names)
+    audit = getattr(info, "radio_audit", None) or radio_coverage(info)
+    args.processed_dir.mkdir(parents=True, exist_ok=True)
+    (args.processed_dir / "radio_inventory.json").write_text(json.dumps(audit, indent=2))
+    info = select_radio_source(info, args.radio_source)
+    if args.legacy_only:
+        if args.legacy_root is None:
+            parser.error("--legacy-only requires --legacy-root")
+        from .io import discover_legacy
+        from .processed import load_processed_optical
+        info = discover_legacy(info, args.legacy_root)
+        counts = {"created": 0, "rebuilt": 0, "reused": 0, "absent": 0}
+        for item in info.values():
+            if not item.get("legacy_path"):
+                counts["absent"] += 1
+                continue
+            _, status = load_processed_optical(item, args.size, args.processed_dir,
+                                              bands=args.legacy_bands, force=args.force, return_status=True)
+            counts[status] += 1
+        print(json.dumps(counts, indent=2))
+        return
     keys = [
         k for k, item in info.items() if args.mode != "pair" or item.get("chandra_path")
     ]
@@ -46,6 +85,10 @@ def preprocessing_main(argv):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "evaluate":
+        from .matched_evaluation import main as evaluate_main
+        evaluate_main(argv[1:])
+        return
     if argv and argv[0] == "createconfig":
         from .config_wizard import create_config
 
@@ -73,6 +116,7 @@ def main(argv=None):
     parser.add_argument(
         "--processed-dir", type=Path, help="Dossier commun des FITS prétraités"
     )
+    parser.add_argument("--dry-run", action="store_true", help="Valider la configuration sans entraîner")
     args = parser.parse_args(argv)
     if args.list_models:
         print(json.dumps(list_models(), indent=2))
@@ -80,15 +124,35 @@ def main(argv=None):
     if args.config is None:
         parser.error("Un fichier de configuration est requis")
     spec = json.loads(args.config.read_text())
+    if "matched_cohort" in spec:
+        from .matched_runner import run_config_suite
+        run_config_suite(spec, args.config, dry_run=args.dry_run,
+                         quiet=args.quiet, processed_dir=args.processed_dir)
+        return
     classes = spec.get("class_names")
     configs = [ExperimentConfig(**item) for item in spec["experiments"]]
+    data_class_mapping = spec.get("data_class_mapping")
+    if data_class_mapping is not None:
+        if (not isinstance(data_class_mapping, dict) or not data_class_mapping
+                or any(c.task != "de_nde" for c in configs)
+                or any(k not in {"DE", "NDE", "cDE", "RR", "RH", "cRR", "cRH"}
+                       for k in data_class_mapping)
+                or any(v not in {"DE", "NDE"} for v in data_class_mapping.values())):
+            parser.error("data_class_mapping requires a DE/NDE suite and explicit annotation-to-DE/NDE mappings")
+    if args.dry_run:
+        print(f"{len(configs)} configurations valides ; aucun entraînement lancé.")
+        return
     # Historical binary JSONs commonly restrict discovery to DE/NDE folders.
     # Subtype tasks need the original annotations, including candidate folders.
     from .labels import SUBTYPE_TASKS
     discovery_classes = classes
     if any(c.task in SUBTYPE_TASKS for c in configs) and (classes is None or set(classes) == {"DE", "NDE"}):
         discovery_classes = None
-    info = get_data_info_dict(spec["data_dir"], discovery_classes)
+    info = get_data_info_dict(spec["data_dir"],
+                              tuple(data_class_mapping) if data_class_mapping else discovery_classes)
+    if data_class_mapping:
+        info = _map_data_classes(info, data_class_mapping)
+    radio_audit = getattr(info, "radio_audit", None) or radio_coverage(info)
     if args.quiet:
         configs = [replace(c, verbose=False) for c in configs]
     if args.processed_dir is not None:
@@ -96,6 +160,9 @@ def main(argv=None):
     if not configs:
         parser.error("La suite doit contenir au moins une expérience")
     output = Path(spec.get("output_dir", "results/experiments"))
+    import uuid
+    output.mkdir(parents=True, exist_ok=True)
+    (output / f"radio-inventory-{uuid.uuid4().hex[:8]}.json").write_text(json.dumps(radio_audit, indent=2))
     runs = run_experiments(
         info,
         configs,
@@ -103,6 +170,9 @@ def main(argv=None):
         class_names=classes or CLASS_NAMES,
         **spec.get("split", {}),
     )
+    for run in runs:
+        if run.is_dir():
+            (run / "radio_inventory.json").write_text(json.dumps(radio_audit, indent=2))
     # Le fichier de comparaison appartient à cette suite et ne remplace pas une autre.
     table = output / f"comparison-{runs[0].name}.csv"
     default_cohort = "paired" if any(c.mode == "pair" for c in configs) else "all"

@@ -105,6 +105,7 @@ class MultilabelRun:
         split_config = self.splits.get("split_config", {})
         row = {
             "run_id": self.id,
+            "radio_source": self.config.get("radio_source", "RAW"),
             "path": str(self.path),
             **{
                 k: self.config.get(k)
@@ -736,6 +737,7 @@ def fold_summary(runs, cohort="all", thresholds_by_run=None):
             rows.append(
                 {
                     "model": group[0].config.get("model"),
+                    "radio_source": group[0].config.get("radio_source", "RAW"),
                     "mode": group[0].config.get("mode"),
                     "metric": metric,
                     "n_folds_present": len(group),
@@ -980,6 +982,8 @@ def classification_gallery_rows(run, thresholds, *, split="test", cohort="all"):
             "cohort": cohort,
             "key": str(key),
             "cluster_id": str(predictions.cluster_ids[i]),
+            "radio_source": run.config.get("radio_source", "RAW"),
+            "size": run.config.get("size", 128),
             "has_chandra": bool(predictions.has_chandra[i]),
         }
         for j, name in enumerate(LABELS):
@@ -1041,7 +1045,15 @@ def _prepare_cluster_modalities(
     if not root.is_dir():
         raise FileNotFoundError(f"Preprocessed root does not exist: {root}")
 
-    fields = {"cluster_id": str(entry["cluster_id"]), "key": str(entry["key"])}
+    fields = {"cluster_id": str(entry["cluster_id"]), "key": str(entry["key"]),
+              "radio_source": entry.get("radio_source", "RAW")}
+    if fields["radio_source"] != "RAW":
+        # Source-specific caches contain CHANDRA already projected on this radio WCS.
+        # Never let historical RAW templates silently select the wrong product.
+        from .processed import processed_paths
+        paths = processed_paths(entry, "pair", entry.get("size", 128), root)
+        radio_template = str(paths["raw"].relative_to(root))
+        chandra_template = str(paths["chandra"].relative_to(root))
 
     def resolve(template):
         candidate = (root / template.format(**fields)).resolve()
@@ -1092,11 +1104,11 @@ def _contour_levels(chandra_display, n_levels=4):
 
 def _gallery_title(entry):
     if "positive_class" in entry:
-        return (f"{entry['cluster_id']}\n{entry['positive_class']}: "
+        return (f"{entry['cluster_id']} [{entry.get('radio_source', 'RAW')}]\n{entry['positive_class']}: "
                 f"{entry['label']}→{entry['prediction']}\n"
                 f"p={entry['probability']:.2f} | {entry.get('annotations', '')}")
     return (
-        f"{entry['cluster_id']}\n"
+        f"{entry['cluster_id']} [{entry.get('radio_source', 'RAW')}]\n"
         f"RR {entry['label_RR'] if entry['known_RR'] else '?'}→{entry['prediction_RR'] if entry['known_RR'] else '?'}  "
         f"RH {entry['label_RH'] if entry['known_RH'] else '?'}→{entry['prediction_RH'] if entry['known_RH'] else '?'}\n"
         f"pRR={entry['probability_RR']:.2f}  pRH={entry['probability_RH']:.2f}"

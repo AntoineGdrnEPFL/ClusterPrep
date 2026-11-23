@@ -178,3 +178,14 @@ Pour les modèles contenant BatchNorm, `batch_size >= 2` est requis. Si le
 dernier lot train n'a qu'un exemple, il est fusionné avec le précédent : le
 dernier lot peut donc contenir `batch_size + 1` exemples, sans perte de données.
 La validation et le test utilisent `eval()` et conservent leurs lots habituels.
+
+### DualEncoderCNN avec sélection explicite des modalités
+
+Avec `mode: "multimodal"`, `dual_encoder_cnn` accepte `modalities: ["radio"]`,
+`["radio", "xray"]` ou `["radio", "legacy"]`. La variante optical conserve
+l'architecture ImageEncoder + fusion de DualEncoderCNN : un encodeur radio,
+un encodeur pour les bandes LEGACY sélectionnées (g/r/z par défaut) et leurs
+masques, puis la tête de classification. La couverture moyenne annule la
+contribution d'une modalité absente. `transfer_modules()` expose `legacy` pour
+l'encodeur optical. Sans `modalities`, les configurations et clés de checkpoints
+radio/Chandra historiques sont conservées.

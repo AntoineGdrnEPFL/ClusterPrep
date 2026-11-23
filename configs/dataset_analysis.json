@@ -1,0 +1,14 @@
+{
+  "training_config": "clusterprep/configs/de_nde_radio_optical_xray_5folds/fold_0.json",
+  "catalogue": "scratch/data/PSZ2/cluster_source_data.csv",
+  "output_dir": "outputs/dataset_analysis",
+  "export": true,
+  "cache": true,
+  "alignment": true,
+  "galleries": true,
+  "gallery_ids": [],
+  "gallery_categories": ["DE", "NDE", "RR", "RH", "cDE", "cRR", "cRH", "U"],
+  "gallery_limit": 8,
+  "coverage_threshold": 0.8,
+  "dpi": 300
+}
