@@ -262,3 +262,26 @@ def radio_coverage(data_info):
         "missing": sorted({i['cluster_id'] for i in data_info.values()
                            if not (i.get('raw_path') if source == 'RAW' else i.get('radio_paths', {}).get(source))})}
         for source in sorted(products)}
+
+
+def load_celestial_geometry(path):
+    """Read the same celestial image geometry as load_celestial_fits, without pixels."""
+    with fits.open(path, memmap=True) as hdus:
+        for hdu in hdus:
+            if not isinstance(hdu, (fits.PrimaryHDU, fits.ImageHDU, fits.CompImageHDU)):
+                continue
+            if len(hdu.shape or ()) < 2:
+                continue
+            try:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', message=r"'datfix' made the change.*", category=FITSFixedWarning)
+                    wcs = WCS(hdu.header).celestial
+            except Exception:
+                continue
+            if not wcs.has_celestial:
+                continue
+            shape = tuple(n for n in hdu.shape if n != 1)
+            if len(shape) < 2:
+                raise ValueError(f'Cannot reduce radio geometry to 2D: {hdu.shape}')
+            return shape[-2:], hdu.header.copy(), wcs
+    raise ValueError('No celestial image HDU found')

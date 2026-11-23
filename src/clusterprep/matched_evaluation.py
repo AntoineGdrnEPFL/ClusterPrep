@@ -19,7 +19,7 @@ def prepare(run_dir,source=DEFAULT_SOURCE):
     if read(run_dir/'status.json')['status']!='completed':raise ValueError('Training not completed')
     splits=read(run_dir/'splits.json');metadata=read(run_dir/'config.json')
     config=ExperimentConfig(**metadata['config'])
-    if config.radio_preprocessing!='matched_resolution' or config.task!='rr_rh':
+    if (config.radio_preprocessing!='matched_resolution' and 'planck' not in (config.modalities or [])) or config.task!='rr_rh':
         raise ValueError('Expected matched RR/RH experiment')
     for name,digest in splits['split_config']['provenance'].items():
         if hashlib.sha256((source/name).read_bytes()).hexdigest()!=digest:
@@ -36,7 +36,7 @@ def prepare(run_dir,source=DEFAULT_SOURCE):
     normalization=read(run_dir/'normalization.json')
     if set(normalization['train_keys'])!=set(splits['train']):raise ValueError('Invalid normalization training IDs')
     if normalization['bounds']!=config.normalization_bounds:raise ValueError('Normalization mismatch')
-    if any(config.normalization.get(m,{}).get('scope')!='train' or m not in config.normalization_bounds for m in ('radio','xray')):
+    if any(config.normalization.get(m,{}).get('scope')!='train' or (config.normalization.get(m,{}).get('method') != 'none' and m not in config.normalization_bounds) for m in (config.modalities or ('radio','xray'))):
         raise ValueError('Frozen train normalization required')
     thresholds=read(run_dir/'thresholds.json')['thresholds']
     if set(thresholds)!={'RR','RH'} or not all(np.isfinite(v) and 0<=v<=1 for v in thresholds.values()):
@@ -59,7 +59,7 @@ def evaluate(prepared,output,device='auto'):
     model=build_model(config,2)
     model.load_state_dict(checkpoint['model_state_dict'])
     ds=ClusterDataset(p['info'],p['keys'],['RR','RH'],mode=config.mode,task=config.task,
-        candidate_policy=config.candidate_policy,modalities=config.modalities,
+        candidate_policy=config.candidate_policy,modalities=config.modalities,planck=config.planck,
         missing_modality_policy=config.missing_modality_policy,include_masks=config.include_masks,
         size=config.size,augment=False,training=False,radio_source=config.radio_source,
         radio_preprocessing=config.radio_preprocessing,matched_resolution=config.matched_resolution,

@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, average_precision_score
 
 from ..metrics import classification_metrics, multilabel_metrics
-from .registry import fingerprint, flatten, prediction_table
+from .registry import configuration_split, fingerprint, flatten, matched_fold, prediction_table
 
 
 def label_contract(run):
@@ -32,11 +32,13 @@ def protocol_id(run, split, cohort='all', threshold_dependent=True):
     parts = partition(run)
     if parts is None or run.status == 'invalid':
         return 'unverified-' + run.run_id
-    split_config = {k: v for k, v in run.splits.get('split_config', {}).items() if k != 'fold_index'}
+    saved_split_config = run.splits.get('split_config', {})
+    split_config = configuration_split(saved_split_config)
     # Historical manifests omitted use_val; infer it from the recorded partition,
     # not from a blanket default. Preserve explicit policies and training provenance.
     split_config.setdefault('use_val', bool(parts['validation']))
-    if run.fold is not None and (run.cv_plan or split_config.get('n_folds')):
+    if run.fold is not None and (run.cv_plan or split_config.get('n_folds')
+                                 or matched_fold(saved_split_config) is not None):
         dataset = sorted(set().union(*map(set, parts.values())))
         plan = run.cv_plan or split_config
     else:

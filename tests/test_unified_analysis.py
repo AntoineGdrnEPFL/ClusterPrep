@@ -155,6 +155,49 @@ def test_fitted_normalization_bounds_aggregate_without_losing_policy(make_run):
     assert runs[0].configuration_id != runs[2].configuration_id
 
 
+def test_matched_cohort_folds_aggregate_by_configuration(make_run):
+    runs = []
+    for experiment, modalities in [('A', ['radio', 'planck']),
+                                    ('C', ['radio', 'chandra', 'planck'])]:
+        for fold in range(5):
+            path = make_run(f'fold_{fold}/planck_{experiment}_historical_fold_{fold}')
+            metadata = json.loads((path/'config.json').read_text())
+            metadata['config']['name'] = path.name
+            metadata['config']['modalities'] = modalities
+            write(path/'config.json', metadata)
+            splits = json.loads((path/'splits.json').read_text())
+            splits['split_config'] = dict(fold=fold, provenance={
+                'cohort_manifest.json': 'shared-cohort', f'fold_{fold}.json': f'fold-hash-{fold}'})
+            write(path/'splits.json', splits)
+            run = a.load_run(path)
+            assert run.fold == fold
+            assert run.splits == splits
+            assert run.configuration_name == f'planck_{experiment}_historical'
+            # The legacy artifact does not declare the planned number of folds.
+            assert run.summary()['expected_folds'] is None
+            runs.append(run)
+    summary = a.aggregate_metrics(a.metrics_table(runs))
+    assert len(summary) == 2
+    assert summary.n_folds.tolist() == [5, 5]
+    assert summary.n_runs.tolist() == [5, 5]
+    assert summary.available_folds.tolist() == ['0,1,2,3,4'] * 2
+    runs[1].splits['split_config']['provenance']['cohort_manifest.json'] = 'other-cohort'
+    assert runs[0].configuration_id != runs[1].configuration_id
+    assert len(a.aggregate_metrics(a.metrics_table(runs))) == 3
+    runs[2].config['seed'] = 123
+    assert runs[0].configuration_id != runs[2].configuration_id
+
+
+def test_matched_fold_requires_manifest_provenance(make_run):
+    path = make_run('planck_A_historical_fold_0')
+    splits = json.loads((path/'splits.json').read_text())
+    splits['split_config'] = {'fold': 0, 'provenance': {'cohort_manifest.json': 'cohort'}}
+    write(path/'splits.json', splits)
+    run = a.load_run(path)
+    assert run.fold is None
+    assert run.configuration_name == path.name
+
+
 def test_explicit_configuration_group_preserves_provenance(make_run):
     reference = a.load_run(make_run('reference', fold=0))
     path = make_run('other', fold=1)

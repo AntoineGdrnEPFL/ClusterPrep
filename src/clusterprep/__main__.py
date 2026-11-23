@@ -8,6 +8,20 @@ from pathlib import Path
 from .io import get_data_info_dict, CLASS_NAMES, radio_coverage
 
 
+def _map_data_classes(info, mapping):
+    """Apply an explicit suite-level mapping, preserving source annotations."""
+    from .labels import labels_for
+    for item in info.values():
+        original = labels_for(item)
+        mapped = {mapping[label] for label in original}
+        labels_for({"labels": mapped})  # Reject contradictory DE/NDE labels.
+        item["source_labels"] = sorted(original)
+        item["labels"] = mapped
+        if "class" in item:
+            item["class"] = mapping[item["class"]]
+    return info
+
+
 def preprocessing_main(argv):
     from .processed import prepare_processed
 
@@ -117,6 +131,14 @@ def main(argv=None):
         return
     classes = spec.get("class_names")
     configs = [ExperimentConfig(**item) for item in spec["experiments"]]
+    data_class_mapping = spec.get("data_class_mapping")
+    if data_class_mapping is not None:
+        if (not isinstance(data_class_mapping, dict) or not data_class_mapping
+                or any(c.task != "de_nde" for c in configs)
+                or any(k not in {"DE", "NDE", "cDE", "RR", "RH", "cRR", "cRH"}
+                       for k in data_class_mapping)
+                or any(v not in {"DE", "NDE"} for v in data_class_mapping.values())):
+            parser.error("data_class_mapping requires a DE/NDE suite and explicit annotation-to-DE/NDE mappings")
     if args.dry_run:
         print(f"{len(configs)} configurations valides ; aucun entraînement lancé.")
         return
@@ -126,7 +148,10 @@ def main(argv=None):
     discovery_classes = classes
     if any(c.task in SUBTYPE_TASKS for c in configs) and (classes is None or set(classes) == {"DE", "NDE"}):
         discovery_classes = None
-    info = get_data_info_dict(spec["data_dir"], discovery_classes)
+    info = get_data_info_dict(spec["data_dir"],
+                              tuple(data_class_mapping) if data_class_mapping else discovery_classes)
+    if data_class_mapping:
+        info = _map_data_classes(info, data_class_mapping)
     radio_audit = getattr(info, "radio_audit", None) or radio_coverage(info)
     if args.quiet:
         configs = [replace(c, verbose=False) for c in configs]

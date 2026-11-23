@@ -231,8 +231,8 @@ class DualEncoderCNN(nn.Module):
             modality_layout = [("radio", 1, False)] + ([("xray", 1, True)] if in_channels == 3 else [])
         if (len(modality_layout) not in (1, 2)
                 or list(modality_layout[0]) != ["radio", 1, False]
-                or (len(modality_layout) == 2 and modality_layout[1][0] not in {"xray", "legacy"})):
-            raise ValueError("DualEncoderCNN requiert radio puis, éventuellement, xray ou legacy")
+                or (len(modality_layout) == 2 and modality_layout[1][0] not in {"xray", "legacy", "planck"})):
+            raise ValueError("DualEncoderCNN requiert radio puis, éventuellement, xray, legacy ou planck")
         if sum(c * (2 if m else 1) for _, c, m in modality_layout) != in_channels:
             raise ValueError("modality_layout incompatible avec input_shape")
         self.secondary_name = modality_layout[1][0] if len(modality_layout) == 2 else None
@@ -258,9 +258,13 @@ class DualEncoderCNN(nn.Module):
             if self.secondary_name == "legacy" else None
         )
 
+        self.planck_encoder = (
+            ImageEncoder(input_shape=(chandra_channels, H, W))
+            if self.secondary_name == "planck" else None
+        )
         fusion_dim = self.radio_encoder.output_dim
         if self.secondary_name:
-            encoder = self.chandra_encoder if self.use_chandra else self.legacy_encoder
+            encoder = self.chandra_encoder if self.use_chandra else (self.planck_encoder if self.secondary_name == "planck" else self.legacy_encoder)
             fusion_dim += encoder.output_dim
 
         if self.use_coverage:
@@ -283,6 +287,7 @@ class DualEncoderCNN(nn.Module):
                 else {}
             ),
             **({"legacy": self.legacy_encoder} if self.legacy_encoder is not None else {}),
+            **({"planck": self.planck_encoder} if self.planck_encoder is not None else {}),
             "head": self.classifier,
         }
 
@@ -312,7 +317,7 @@ class DualEncoderCNN(nn.Module):
         else:
             chandra_input = chandra
 
-        encoder = self.chandra_encoder if self.use_chandra else self.legacy_encoder
+        encoder = self.chandra_encoder if self.use_chandra else (self.planck_encoder if self.secondary_name == "planck" else self.legacy_encoder)
         chandra_features = encoder(chandra_input)
 
         # Mean coverage over secondary bands.

@@ -49,6 +49,7 @@ class ClusterDataset(Dataset):
         matched_resolution=None,
         matched_records=None,
         matched_cache_dir=None,
+        planck=None,
     ):
 
         if radio_preprocessing not in {"historical", "matched_resolution"}:
@@ -66,11 +67,13 @@ class ClusterDataset(Dataset):
         if radio_source is not None:
             data_info = select_radio_source(data_info, radio_source, missing_radio_policy)
         validate_modalities(modalities, missing_modality_policy, legacy, include_masks)
-        keys = mode_keys(data_info, keys, mode)
+        keys = mode_keys(data_info, keys, mode, modalities)
         self.modalities = modalities
         self.legacy = legacy or {}
         self.include_masks = include_masks
-        self.normalization = normalization or {}
+        from .planck import validate_planck, normalization_options
+        self.planck = validate_planck(planck, modalities)
+        self.normalization = normalization_options(normalization, modalities)
         self.normalization_bounds = normalization_bounds or {}
         if modalities is not None:
             if scattering_dir is not None:
@@ -320,8 +323,52 @@ class ClusterDataset(Dataset):
 
 
     def _modality_images(self, info):
+        # Cache only physical, deterministic arrays; statistics, noise and geometry
+        # remain downstream and fold-local. Historical non-Planck paths are unchanged.
+        if not self.cache or 'planck' not in self.modalities or self.planck.get('force_rebuild', False):
+            return self._load_modality_images(info)
+        from copy import deepcopy
+        from dataclasses import asdict
+        from .planck import source_identity, VERSION
+        from .processed import processed_paths, CACHE_VERSION
+        paths = {'radio': resolve_radio_path(info), 'planck': self.planck['source_path']}
+        for modality, field in [('xray', 'chandra_path'), ('legacy', 'legacy_path')]:
+            if modality in self.modalities:
+                paths[modality] = info.get(field)
+        matched = None
         if self._matched is not None:
-            return self._matched.load(info, self.size)
+            paths.update(self._matched.sources(info))
+            matched = (asdict(self._matched.options), self._matched.record(info))
+        identity = (VERSION, CACHE_VERSION, self.size, self.modalities, self.legacy,
+                    self.planck, self.processed_dir, self.radio_preprocessing, matched,
+                    {name: source_identity(path) if path else None for name, path in paths.items()})
+        slot = (info['cluster_id'], str(paths['radio']))
+        if not hasattr(self, '_modality_cache'):
+            self._modality_cache = {}
+        previous = self._modality_cache.get(slot)
+        def stamps(files):
+            from pathlib import Path
+            return {p: source_identity(p) if Path(p).exists() else None for p in files}
+        if previous is not None:
+            old_identity, old_stamps, images = previous
+            if old_identity == identity and old_stamps == stamps(old_stamps):
+                return deepcopy(images)
+        images = self._load_modality_images(info)
+        files = [images['cache_path']]
+        if self._matched is None and self.processed_dir is not None:
+            paired = 'xray' in self.modalities and bool(info.get('chandra_path'))
+            files.extend(str(p) for p in processed_paths(info, 'pair' if paired else 'raw',
+                                                       self.size, self.processed_dir).values())
+        self._modality_cache[slot] = (deepcopy(identity), stamps(files), deepcopy(images))
+        return images
+
+    def _load_modality_images(self, info):
+        if self._matched is not None:
+            images = self._matched.load(info, self.size)
+            if 'planck' in self.modalities:
+                from .planck import aligned_images
+                images.update(aligned_images(info, images, self.size, self.planck, matched=True))
+            return images
         from .processed import load_processed_optical
         from .preprocessing import preprocess_optical
         paired = "xray" in self.modalities and bool(info.get("chandra_path"))
@@ -333,6 +380,9 @@ class ClusterDataset(Dataset):
             optical = (preprocess_optical(info, self.size, **options) if self.processed_dir is None else
                        load_processed_optical(info, self.size, self.processed_dir, **options))
             images.update(optical)
+        if 'planck' in self.modalities:
+            from .planck import aligned_images
+            images.update(aligned_images(info, images, self.size, self.planck))
         return images
 
     def _modality_item(self, index):
@@ -358,12 +408,14 @@ class ClusterDataset(Dataset):
             mask = np.asarray(images.get(name + "_mask", np.isfinite(image)), dtype=bool).reshape(image.shape)
             if not info.get(PATHS[modality]):
                 mask[:] = False
+            if modality == "planck" and self.mode == "pair" and not mask.any():
+                raise ValueError(f"No valid Planck coverage for required pair: {info['cluster_id']}")
             if image.shape != (count, self.size, self.size):
                 raise ValueError(f"Unexpected {modality} shape: {image.shape}")
             options = (self.legacy.get("normalization", {}) if modality == "legacy" else
                        self.normalization.get(modality, {}))
             bounds = self.normalization_bounds.get(modality)
-            if options.get("scope", "image") == "train" and bounds is None:
+            if options.get("scope", "image") == "train" and options.get("method") != "none" and bounds is None:
                 raise ValueError(f"Train normalization bounds missing for {modality}")
             if modality == "radio" and self.noise_enabled:
                 context = prepare_noise_context(images, info, self.processed_dir)
@@ -384,7 +436,7 @@ class ClusterDataset(Dataset):
             stacked.append(tensor)
             if with_mask:
                 stacked.append(coverage)
-            availability.append(bool(info.get(PATHS[modality])))
+            availability.append(bool(mask.any()) if modality == "planck" else bool(info.get(PATHS[modality])))
         sample["image"] = torch.cat(stacked)
         sample["availability"] = torch.tensor(availability, dtype=torch.bool)
         if self.include_targets:

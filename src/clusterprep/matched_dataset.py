@@ -98,8 +98,8 @@ class MatchedDatasetAdapter:
             raise ValueError('matched_resolution cannot reuse historical precomputed scattering')
         if dataset.radio_noise['enabled']:
             raise ValueError('matched_resolution radio_noise requires a matched-beam noise model')
-        if dataset.modalities is not None and set(dataset.modalities) - {'radio', 'xray'}:
-            raise ValueError('matched_resolution currently supports radio/xray modalities only')
+        if dataset.modalities is not None and set(dataset.modalities) - {'radio', 'xray', 'planck'}:
+            raise ValueError('matched_resolution currently supports radio/xray/planck modalities only')
         if dataset.modalities is not None and not dataset.include_masks:
             raise ValueError('matched_resolution explicit modalities require include_masks=True')
         # Validate required identities without processing images or filtering keys.

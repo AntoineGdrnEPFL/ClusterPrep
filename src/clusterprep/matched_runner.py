@@ -27,16 +27,16 @@ def device_name(requested):
     return requested
 
 
-def load_plan(experiment,fold=0,seed=42,source=DEFAULT_SOURCE,mode='multimodal'):
+def load_plan(experiment,fold=0,seed=42,source=DEFAULT_SOURCE,mode='multimodal',modalities=None):
     source=Path(source).resolve()
     if (source/'cohort_manifest.json').exists():
         from .modalities import mode_keys
         manifest=read(source/'cohort_manifest.json'); info=manifest['samples']
         original=read(source/f'fold_{fold}.json')
         if mode not in ('multimodal','pair'):raise ValueError('Expected multimodal or pair mode')
-        partition={**original,**{n:mode_keys(info,original[n],mode) for n in ('train','validation','test')}}
+        partition={**original,**{n:mode_keys(info,original[n],mode,modalities) for n in ('train','validation','test')}}
         flat=sum((partition[n] for n in ('train','validation','test')),[])
-        expected=mode_keys(info,list(info),mode)
+        expected=mode_keys(info,list(info),mode,modalities)
         if len(flat)!=len(set(flat)) or set(flat)!=set(expected):raise ValueError('Incomplete or overlapping population')
         if original['test']!=manifest['external_test']:raise ValueError('External test changed')
         if len({info[k]['cluster_id'] for k in flat})!=len(flat):raise ValueError('Duplicate cluster IDs')
@@ -106,21 +106,22 @@ def run_config_suite(spec, config_path, *, dry_run=False, quiet=False, processed
     prepared=[]
     for item in spec['experiments']:
         config=ExperimentConfig(**item)
+        with_planck = 'planck' in (config.modalities or [])
         if (config.radio_source not in ('RAW','T50kpcSUB') or
-            config.radio_preprocessing!='matched_resolution' or config.evaluate_test or
-            config.task!='rr_rh' or config.model!='dual_encoder_cnn' or
+            (config.radio_preprocessing!='matched_resolution' and not with_planck) or (config.evaluate_test and not with_planck) or
+            config.task!='rr_rh' or (config.model!='dual_encoder_cnn' and not (with_planck and config.model=='multi_encoder_cnn')) or
             config.transfer is not None or config.cross_validation is not None):
             raise ValueError('Matched cohort requires RR/RH DualEncoderCNN without transfer or external test evaluation')
-        if any(config.normalization.get(m,{}).get('scope')!='train' for m in ('radio','xray')):
+        if any(config.normalization.get(m,{}).get('scope')!='train' for m in (config.modalities if with_planck else ('radio','xray'))):
             raise ValueError('Matched cohort requires train-only normalization')
         experiment='A' if config.radio_source=='RAW' else 'B'
-        plan=load_plan(experiment,fold,config.seed,source,mode=config.mode)
+        plan=load_plan(experiment,fold,config.seed,source,mode=config.mode,modalities=config.modalities)
         if config.mode=='multimodal' and read(source/f'fold_{fold}.json')!=plan['partition']:
             raise ValueError('Individual fold differs from manifest')
         config=replace(config, device=device_name(config.device),
                        verbose=False if quiet else config.verbose,
                        processed_dir=str(processed_dir) if processed_dir else config.processed_dir,
-                       matched_cache_dir=plan['cache_root'])
+                       matched_cache_dir=plan['cache_root'] if config.radio_preprocessing == 'matched_resolution' else None)
         prepared.append((plan,config))
     if not prepared:raise ValueError('Empty experiments')
     # Validate every configuration before any call that can train.
@@ -129,7 +130,9 @@ def run_config_suite(spec, config_path, *, dry_run=False, quiet=False, processed
         if dry_run:
             print(json.dumps(dict(product=config.radio_source,fold=fold,
                 train=len(partition['train']),validation=len(partition['validation']),
-                reserved_test=len(partition['test']),evaluate_test=False)))
+                reserved_test=0 if config.evaluate_test else len(partition['test']),
+                test=len(partition['test']) if config.evaluate_test else 0,
+                evaluate_test=config.evaluate_test)))
             continue
         run_experiment(plan['samples'],config,spec['output_dir'],class_names=('RR','RH'),
             splits=tuple(partition[n] for n in ('train','validation','test')),

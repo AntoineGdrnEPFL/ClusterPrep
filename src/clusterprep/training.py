@@ -102,6 +102,7 @@ class ExperimentConfig(TrainingConfig):
     matched_records: dict | None = None
     matched_cache_dir: str | None = None
     evaluate_test: bool = True
+    planck: dict = field(default_factory=dict)
 
     def __post_init__(self):
         super().__post_init__()
@@ -112,8 +113,13 @@ class ExperimentConfig(TrainingConfig):
         if self.radio_preprocessing == "matched_resolution":
             from .matched_dataset import MatchedResolutionConfig
             MatchedResolutionConfig.parse(self.matched_resolution)
-            if self.modalities != ["radio", "xray"]:
-                raise ValueError("Matched training requires explicit radio/xray modalities")
+            if (self.modalities != ["radio", "xray"] and
+                    (not self.modalities or 'planck' not in self.modalities or
+                     'radio' not in self.modalities or set(self.modalities) - {'radio', 'xray', 'planck'})):
+                raise ValueError("Matched training requires explicit radio/xray or radio/planck modalities")
+        from .planck import validate_planck, normalization_options
+        validate_planck(self.planck, self.modalities)
+        object.__setattr__(self, 'normalization', normalization_options(self.normalization, self.modalities))
         from .io import validate_radio_source
         validate_radio_source(self.radio_source)
         if self.missing_radio_policy != "error":
@@ -1134,7 +1140,7 @@ def run_experiment(
     if splits is None:
         splits = split_data_keys(
             data_info,
-            mode=(config.mode if config.task == "rr_rh" else "raw"),
+            mode=(config.mode if config.task == "rr_rh" and "planck" not in (config.modalities or []) else "raw"),
             task=config.task,
             candidate_policy=config.candidate_policy,
             seed=config.seed,
@@ -1192,9 +1198,8 @@ def run_experiment(
         splits = tuple([k for k in keys if all(data_info[k].get(PATHS[m]) for m in required)]
                        for keys in splits)
     if config.mode == "pair":
-        splits = tuple(
-            [k for k in keys if data_info[k].get("chandra_path")] for keys in splits
-        )
+        from .modalities import mode_keys
+        splits = tuple(mode_keys(data_info, keys, config.mode, config.modalities) for keys in splits)
     _validate_splits(
         data_info, splits, class_names, config.task, config.candidate_policy,
         allow_empty_validation=not has_validation,
@@ -1271,7 +1276,7 @@ def _run(
         base_splits = (base_splits[0], base_splits[1], [])
         active = set(splits[0] + splits[1])
         info = {k: v for k, v in info.items() if k in active}
-    dataset_options = dict(radio_preprocessing=config.radio_preprocessing,
+    dataset_options = dict(planck=config.planck, radio_preprocessing=config.radio_preprocessing,
                            matched_resolution=config.matched_resolution,
                            matched_records=config.matched_records,
                            matched_cache_dir=config.matched_cache_dir)

@@ -1,8 +1,8 @@
 """Opt-in modality layout and normalization; historical layouts remain unchanged."""
 import numpy as np
 
-PATHS = {"radio": "raw_path", "xray": "chandra_path", "legacy": "legacy_path"}
-NAMES = {"radio": "raw", "xray": "chandra", "legacy": "legacy"}
+PATHS = {"radio": "raw_path", "xray": "chandra_path", "legacy": "legacy_path", "planck": "raw_path"}
+NAMES = {"radio": "raw", "xray": "chandra", "legacy": "legacy", "planck": "planck"}
 
 
 def validate_modalities(modalities, policy="optional", legacy=None, masks=True):
@@ -10,7 +10,9 @@ def validate_modalities(modalities, policy="optional", legacy=None, masks=True):
         return
     if (not isinstance(modalities, (list, tuple)) or not modalities
             or len(set(modalities)) != len(modalities) or set(modalities) - PATHS.keys()):
-        raise ValueError("modalities: unique nonempty selection of radio, xray, legacy")
+        raise ValueError("modalities: unique nonempty selection of radio, xray, legacy, planck")
+    if 'planck' in modalities and not masks:
+        raise ValueError('Planck requires spatial mask channels')
     if policy not in {"required", "optional"}:
         raise ValueError("missing_modality_policy: required or optional")
     if policy == "optional" and not masks:
@@ -41,6 +43,24 @@ def normalize_planes(image, mask, options=None, bounds=None):
     if set(options) - {"scope", "method", "lower_percentile", "upper_percentile", "alpha"}:
         raise ValueError("Unknown normalization option")
     method = options.get("method", "asinh_percentile")
+    if method in {"none", "standard", "percentile_asinh"}:
+        valid = np.isfinite(image) & np.asarray(mask, dtype=bool)
+        output = np.zeros_like(image, dtype=np.float32)
+        for i, plane in enumerate(image):
+            pixels = plane[valid[i]].astype(np.float64)
+            if method != "none":
+                if bounds is None:
+                    raise ValueError("Training statistics required")
+                a, b = bounds[i]
+                if not np.isfinite([a, b]).all() or (method == "standard" and b < 0):
+                    raise ValueError("Invalid training statistics")
+                if method == "standard":
+                    pixels = (pixels - a) / (b if b > 0 else 1.)
+                else:
+                    scale = b - a
+                    pixels = np.arcsinh((pixels - a) / (scale if scale > 0 else 1.))
+            output[i][valid[i]] = pixels
+        return output
     if method not in {"percentile", "asinh_percentile"}:
         raise ValueError("normalization.method: percentile or asinh_percentile")
     if options.get("scope", "image") not in {"image", "train"}:
@@ -63,7 +83,7 @@ def fit_normalization(dataset):
     for modality in dataset.modalities:
         options = (dataset.legacy.get("normalization", {}) if modality == "legacy" else
                    dataset.normalization.get(modality, {}))
-        if options.get("scope", "image") == "train":
+        if options.get("scope", "image") == "train" and options.get("method") != "none":
             pending[modality] = options
     if not pending:
         return {}
@@ -86,13 +106,20 @@ def fit_normalization(dataset):
             pixels = np.concatenate(parts) if parts else np.array([])
             if not pixels.size:
                 raise ValueError(f"No covered training pixels for {modality} normalization")
+            if options.get("method") == "standard":
+                bounds[modality].append([float(np.mean(pixels, dtype=np.float64)),
+                                         float(np.std(pixels, dtype=np.float64))])
+                continue
             bounds[modality].append(np.percentile(pixels, [options.get("lower_percentile", 30),
                                                           options.get("upper_percentile", 99)]).tolist())
     return bounds
 
 
-def mode_keys(info, keys, mode):
+def mode_keys(info, keys, mode, modalities=None):
     """CHANDRA eligibility depends on mode, never on spatial preprocessing."""
+    if modalities is not None and 'planck' in modalities:
+        required = modalities if mode == 'pair' else ['radio']
+        return [k for k in keys if all(info[k].get(PATHS[m]) for m in required)]
     return [k for k in keys if mode != 'pair' or info[k].get('chandra_path')]
 
 

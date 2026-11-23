@@ -36,6 +36,28 @@ def flatten(value, prefix=''):
     return result
 
 
+def matched_fold(split_config):
+    """Recognize the matched-cohort manifest contract, without guessing from names."""
+    fold = split_config.get('fold')
+    provenance = split_config.get('provenance', {})
+    if (type(fold) is int and fold >= 0 and isinstance(provenance, dict)
+            and provenance.get('cohort_manifest.json')
+            and provenance.get(f'fold_{fold}.json')):
+        return fold
+    return None
+
+
+def configuration_split(split_config):
+    """Keep shared protocol provenance while excluding the selected fold."""
+    result = {k: v for k, v in split_config.items() if k != 'fold_index'}
+    fold = matched_fold(split_config)
+    if fold is not None:
+        result.pop('fold')
+        result['provenance'] = {k: v for k, v in result['provenance'].items()
+                                if k != f'fold_{fold}.json'}
+    return result
+
+
 @dataclass
 class TrainingRun:
     path: Path
@@ -129,7 +151,7 @@ class TrainingRun:
         # original artifacts, but do not split a CV configuration by those values.
         ignored = {'name', 'verbose', 'device', 'num_workers', 'cache', 'normalization_bounds'}
         config = {k: v for k, v in self.config.items() if k not in ignored}
-        split = {k: v for k, v in self.splits.get('split_config', {}).items() if k != 'fold_index'}
+        split = configuration_split(self.splits.get('split_config', {}))
         return fingerprint([config, split, self.stage, self.metadata.get('normalization'),
                             None if ignore_code_version else self.metadata.get('library_source_sha256')])
 
@@ -317,6 +339,8 @@ def load_run(directory):
         run.threshold_policy = {'method': 'argmax', 'class_order': run.labels}
     split_config = run.splits.get('split_config', {})
     run.fold = split_config.get('fold_index') if split_config.get('n_folds') else None
+    if run.fold is None:
+        run.fold = matched_fold(split_config)
     if run.stage == 'fold':
         # Current CV artifacts omit fold_index; verified pipeline layout fallback.
         match = re.fullmatch(r'fold_(\d+)', run.path.name)
